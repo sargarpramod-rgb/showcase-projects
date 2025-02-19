@@ -4,7 +4,6 @@ DialogActions, DialogContent, DialogTitle, Button, TablePagination, Typography,
 Box, Grid, MenuItem, Select} from "@mui/material";
 import { PieChart, Pie, Cell, Tooltip, Legend,ResponsiveContainer, BarChart,XAxis,YAxis,Bar } from "recharts";
 import mockResponse from './mockData'
-import { useDropzone } from 'react-dropzone';
 
 function getRandomDate() {
   const start = new Date(2023, 0, 1);
@@ -66,12 +65,6 @@ function ListComponent() {
   const [selectedPayee, setSelectedPayee] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
 
-    const onDrop = (acceptedFiles) => {
-        console.log("Uploaded files:", acceptedFiles);
-        // call backend API and use that data.
-    };
-
-  const { getRootProps, getInputProps } = useDropzone({ onDrop });
 
   const aggregatedData1 = Object.entries(data).reduce((acc, [payee, transactions]) => {
     const totalAmount = transactions.reduce((sum, txn) => sum + txn.amount, 0);
@@ -202,10 +195,6 @@ function ListComponent() {
 
   return (
     <Box sx={{ maxWidth: "80%", margin: "auto", padding: 3 }}>
-      <Box {...getRootProps()} sx={{ border: "2px dashed #ccc", padding: 3, textAlign: "center", marginBottom: 2, cursor: "pointer" }}>
-              <input {...getInputProps()} />
-              <Typography>Drag & drop files here, or click to select files</Typography>
-            </Box>
       <Typography variant="h4" gutterBottom align="center">Transaction List</Typography>
       <Grid container spacing={2} alignItems="center" justifyContent="space-between">
         <Grid item xs={12} sm={6}>
