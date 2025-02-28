@@ -1,10 +1,36 @@
-import { useState } from "react";
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, Dialog,
-DialogActions, DialogContent, DialogTitle, Button, TablePagination, Typography,
-Box, Grid, MenuItem, Select} from "@mui/material";
+import React, { useState } from "react";
+import { Tooltip as MuiTooltip,AppBar, Tabs, Tab, Box, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, LinearProgress } from "@mui/material";
+import { styled } from "@mui/system";
+import { CheckCircle, UploadFile, Edit, Save } from "@mui/icons-material";
+import { Dialog,
+DialogActions, DialogContent, DialogTitle, TablePagination, Grid, MenuItem, Select} from "@mui/material";
 import { PieChart, Pie, Cell, Tooltip, Legend,ResponsiveContainer, BarChart,XAxis,YAxis,Bar } from "recharts";
 import mockResponse from './mockData'
 import { useDropzone } from 'react-dropzone';
+
+// Custom Styled Tabs
+const CustomTabs = styled(Tabs)({
+  backgroundColor: "#f5f5f5",
+  borderRadius: "10px 10px 0 0",
+  width: "85%", // Adjusted width to 85% of the screen
+  margin: "auto",
+  "& .MuiTabs-indicator": {
+    display: "none",
+  },
+});
+
+// Custom Styled Tab
+const CustomTab = styled(Tab)(({ selected }) => ({
+  fontWeight: "bold",
+  textTransform: "none",
+  borderRadius: "10px 10px 0 0",
+  backgroundColor: selected ? "#ffffff" : "#d1d1d1",
+  boxShadow: selected ? "0px -3px 6px rgba(0,0,0,0.2)" : "none",
+  transition: "all 0.3s",
+  "&:hover": {
+    backgroundColor: selected ? "#fff" : "#e0e0e0",
+  },
+}));
 
 function getRandomDate() {
   const start = new Date(2023, 0, 1);
@@ -17,14 +43,12 @@ const categorySubcategories = {
   "Household & Utilities": [
       "Groceries(Online/offline)",
       "Vegetables",
-      "Electricity",
+      "Utilities",
       "Society Maintenance",
-      "Gas",
-      "Internet",
-      "Paper",
       "House Help",
       "Transport",
-      "Service/Repairs"
+      "Service/Repairs",
+      "Adhoc"
     ],
   "EMI": [
       "EMI",
@@ -34,17 +58,19 @@ const categorySubcategories = {
     ],
     "Health & Personal Care": [
       "Medicial",
+      "Saloon",
       "Skin Care products",
       "Doctor Visits",
       "Vaccination"
     ],
     "Education": ["Stationary", "School Activities Fees", "School fees", "Tuition fees"],
-    "Food": ["Zepto","BBDaily","Zomato","Prashant Corner","Groceries(Online/offline)",
-    "Restaurants/Dine In", "Vegetables"],
+    "Food": ["Zepto","BBDaily","Zomato","Prashant Corner",
+    "Restaurants/Dine In", "Vegetables/Food"],
     "Lifestyle & Entertainment": [
       "Clothes",
       "Electronics",
       "Accessories",
+      "Entertainment",
       "Travel (Domestic, International)",
       "Hotel Stay",
       "Car Service",
@@ -55,23 +81,60 @@ const categorySubcategories = {
     "Miscellaneous": ["Others"]
 };
 
-function ListComponent() {
-  const [data, setData] = useState(mockResponse);
-  const [categories, setCategories] = useState(Object.keys(categorySubcategories));
-  const [filterText, setFilterText] = useState("");
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [openChartDialog, setOpenChartDialog] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState(null);
-  const [selectedPayee, setSelectedPayee] = useState(null);
-  const [openDialog, setOpenDialog] = useState(false);
+export default function MultiStepFormWithStyledTabs() {
+  const [tabIndex, setTabIndex] = useState(0);
+  const [file, setFile] = useState(null);
+  const [isSaved, setIsSaved] = useState(false);
 
-    const onDrop = (acceptedFiles) => {
-        console.log("Uploaded files:", acceptedFiles);
-        // call backend API and use that data.
-    };
+    const [data, setData] = useState(mockResponse);
+    const [categories, setCategories] = useState(Object.keys(categorySubcategories));
+    const [filterText, setFilterText] = useState("");
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [openChartDialog, setOpenChartDialog] = useState(false);
+    const [selectedCategory, setSelectedCategory] = useState(null);
+    const [selectedPayee, setSelectedPayee] = useState(null);
+    const [openDialog, setOpenDialog] = useState(false);
 
-  const { getRootProps, getInputProps } = useDropzone({ onDrop });
+  const handleFileUpload = async (event) => {
+    const uploadedFile = event.target.files[0];
+    setFile(uploadedFile);
+
+    if (uploadedFile) {
+      const formData = new FormData();
+      formData.append("file", uploadedFile);
+
+      try {
+        const response = await fetch("http://localhost:8080/api/upload-transaction-file", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error("File upload failed");
+        }
+
+        const result = await response.json();
+        setData(result)
+        console.log("File uploaded successfully:", result);
+        setTabIndex(1);
+      } catch (error) {
+        console.error("Error uploading file:", error);
+      }
+    }
+  };
+
+  const handleChange = (id, key, value) => {
+    setData(data.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
+  };
+
+  const handleSave = () => {
+    console.log("Saving Data:", data);
+    setIsSaved(true);
+    setTabIndex(2); // Move to Step 3 after saving
+  };
+
+  const progressValue = tabIndex === 0 ? 33 : tabIndex === 1 ? 66 : 100;
 
   const aggregatedData1 = Object.entries(data).reduce((acc, [payee, transactions]) => {
     const totalAmount = transactions.reduce((sum, txn) => sum + txn.amount, 0);
@@ -197,27 +260,77 @@ function ListComponent() {
     });
   };
 
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
+    const sortTransactions = (data, sortKey, ascending = true) => {
+      if (!data || typeof data !== "object") return {}; // Handle invalid data
+
+      return Object.keys(data).reduce((sortedData, date) => {
+        sortedData[date] = [...data[date]].sort((a, b) => {
+          if (typeof a[sortKey] === "string") {
+            return ascending
+              ? a[sortKey].localeCompare(b[sortKey])
+              : b[sortKey].localeCompare(a[sortKey]);
+          } else {
+            return ascending
+              ? a[sortKey] - b[sortKey]
+              : b[sortKey] - a[sortKey];
+          }
+        });
+        return sortedData;
+      }, {});
+    };
+
+  const handleSort = (key) => {
+      let direction = 'asc';
+        if (sortConfig.key === key && sortConfig.direction === 'asc') {
+          direction = 'desc';
+        }
+        console.log(key)
+        console.log(direction)
+        setSortConfig({ key, direction });
+
+        // Sort using the computed direction
+        const sortedData = sortTransactions(data, key, direction === 'asc');
+        console.log(sortedData)
+        setData({ ...sortedData }); // Set sorted data back to state for the table
+  };
   const colors = ["#8884d8", "#82ca9d", "#ffc658", "#ff8042", "#8dd1e1"];
   const barColors = ["#1f77b4", "#ff7f0e", "#2ca02c"]
 
+
   return (
-    <Box sx={{ maxWidth: "80%", margin: "auto", padding: 3 }}>
-      <Box {...getRootProps()} sx={{ border: "2px dashed #ccc", padding: 3, textAlign: "center", marginBottom: 2, cursor: "pointer" }}>
-              <input {...getInputProps()} />
-              <Typography>Drag & drop files here, or click to select files</Typography>
-            </Box>
-      <Typography variant="h4" gutterBottom align="center">Transaction List</Typography>
-      <Grid container spacing={2} alignItems="center" justifyContent="space-between">
-        <Grid item xs={12} sm={6}>
-          <TextField
-            label="Filter by Payee"
-            variant="outlined"
-            size="small"
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-            fullWidth
-          />
-        </Grid>
+    <Box sx={{ width: "100%", maxWidth: "60%", margin: "auto", mt: 5, p: 3, bgcolor: "white", boxShadow: 3, borderRadius: 2 }}>
+      {/* Custom Styled Tabs */}
+      <AppBar position="static" sx={{ background: "transparent", boxShadow: "none" }}>
+        <CustomTabs value={tabIndex} onChange={(e, newValue) => setTabIndex(newValue)} variant="fullWidth">
+          <CustomTab label="Upload File" icon={<UploadFile />} selected={tabIndex === 0} />
+          <CustomTab label="Edit Data" icon={<Edit />} selected={tabIndex === 1} disabled={!file} />
+          <CustomTab label="Save Data" icon={<Save />} selected={tabIndex === 2} disabled={!isSaved} />
+        </CustomTabs>
+      </AppBar>
+
+      {/* Step Progress Indicator */}
+      <Box sx={{ my: 2 }}>
+        <LinearProgress variant="determinate" value={progressValue} sx={{ height: 8, borderRadius: 5 }} />
+      </Box>
+
+      <Box sx={{ p: 3 }}>
+        {tabIndex === 0 && (
+          <Box textAlign="center">
+            <input type="file" onChange={handleFileUpload} style={{ marginBottom: "10px" }} />
+            <Typography variant="body2" color="textSecondary">
+              Upload a PDF file to proceed.
+            </Typography>
+          </Box>
+        )}
+
+        {tabIndex === 1 && (
+          <Box>
+            <Typography variant="h6" gutterBottom>
+              Edit Table Data
+            </Typography>
+    <Grid container spacing={2} alignItems="center" justifyContent="space-between">
         <Grid item xs={12} sm={6} textAlign="right">
           <Button variant="contained" color="secondary" onClick={handleOpenChartDialog}>
             Show Pie Chart
@@ -228,7 +341,9 @@ function ListComponent() {
         <Table stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell><b>Payee</b></TableCell>
+              <TableCell onClick={() => handleSort("payee")} style={{ cursor: 'pointer' }}>
+                <b>Payee</b>
+              </TableCell>
               <TableCell><b>Total Amount</b></TableCell>
               <TableCell><b>Transaction Count</b></TableCell>
               <TableCell><b>Category</b></TableCell>
@@ -238,7 +353,13 @@ function ListComponent() {
           <TableBody>
             {aggregatedData.slice(page * rowsPerPage, (page + 1) * rowsPerPage).map((row) => (
               <TableRow key={row.payee}>
-                <TableCell>{row.payee}</TableCell>
+                <TableCell>
+                    <MuiTooltip title={row.payee} arrow>
+                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "150px", display: "inline-block" }}>
+                          {row.payee}
+                        </span>
+                    </MuiTooltip>
+                </TableCell>
                 <TableCell>{row.totalAmount.toFixed(2)}</TableCell>
                 <TableCell>
                   <Button onClick={() => { setSelectedPayee(row); setOpenDialog(true); }}>
@@ -353,8 +474,24 @@ function ListComponent() {
                         </DialogActions>
                       </Dialog>
       <TablePagination component="div" count={aggregatedData.length} page={page} onPageChange={(event, newPage) => setPage(newPage)} rowsPerPage={rowsPerPage} onRowsPerPageChange={(event) => setRowsPerPage(parseInt(event.target.value, 10))} />
+            <Button variant="contained" color="primary" onClick={handleSave} sx={{ mt: 2 }}>
+              Save & Proceed
+            </Button>
+          </Box>
+        )}
+
+        {tabIndex === 2 && (
+          <Box textAlign="center">
+            <CheckCircle sx={{ fontSize: 50, color: "green" }} />
+            <Typography variant="h5" color="success.main">
+              Data Saved Successfully!
+            </Typography>
+            <Typography variant="body2" color="textSecondary">
+              Your data has been sent to the backend.
+            </Typography>
+          </Box>
+        )}
+      </Box>
     </Box>
   );
 }
-
-export default ListComponent;

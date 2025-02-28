@@ -1,15 +1,9 @@
-package com.example.restservice.controller;
+package com.transaction.controller;
 
-import com.example.restservice.service.TransactionService;
 import com.github.fracpete.quicken4j.QIFReader;
 import com.github.fracpete.quicken4j.Transaction;
 import com.github.fracpete.quicken4j.Transactions;
-import org.apache.pdfbox.*;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.PDPage;
-import org.apache.pdfbox.pdmodel.PDPageContentStream;
-import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.apache.pdfbox.text.PDFTextStripper;
+import com.transaction.service.TransactionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,9 +20,12 @@ import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static java.util.stream.Collectors.toMap;
+
 
 @RestController
 @RequestMapping("/api")
+@CrossOrigin
 public class TransactionController {
 
     @Autowired
@@ -60,6 +57,51 @@ public class TransactionController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Exception while uploading file, " +
                     "please try again!!!");
+        }
+    }
+
+    @PostMapping("/upload-transaction-file")
+    public ResponseEntity<Map<String, List<Transaction>>> getAllTransactions(@RequestParam("file") MultipartFile file) {
+        try {
+            // Ensure upload directory exists
+            File uploadDir = new File(UPLOAD_DIR);
+            if (!uploadDir.exists()) {
+                uploadDir.mkdir();
+            }
+
+            // Save file to server
+            Path filePath = Path.of(UPLOAD_DIR, Objects.requireNonNull(file.getOriginalFilename()));
+            Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+            var reader = new QIFReader();
+            Transactions trans = reader.read(filePath.toFile());
+
+            // TODO : Move this logic to Service.
+            Map<String, List<Transaction>> transactionData = trans.stream().map(t -> {
+
+                Map<String, String> values = new HashMap<>();
+
+                values.put("D", String.valueOf(t.getDate()));
+                values.put("T", t.getAmount().toString());
+                values.put("P", t.getPayee().contains("-") ? t.getPayee().split("-")[1]: t.getPayee());
+
+                return new Transaction(values);
+            }).collect(Collectors.groupingBy(Transaction::getPayee));
+
+            // Flatten and sort all transactions by amount after grouping
+            LinkedHashMap<String, List<Transaction>> collect = transactionData.entrySet().stream()
+                    .sorted(Comparator.comparingDouble(e -> e.getValue().stream().mapToDouble(Transaction::getAmount).sum()))
+                    .collect(toMap(
+                            Map.Entry::getKey,
+                            Map.Entry::getValue,
+                            (e1, e2) -> e1,
+                            LinkedHashMap::new // Preserve sorted order
+                    ));
+
+            return ResponseEntity.ok(collect);
+        }
+        catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         }
     }
 

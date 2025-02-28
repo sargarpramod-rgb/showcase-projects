@@ -9,10 +9,10 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.example</groupId>
-	<artifactId>rest-service-initial</artifactId>
+	<artifactId>transaction-tracker-backend</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>rest-service-initial</name>
-	<description>Demo project for Spring Boot</description>
+	<name>transaction-tracker-backend</name>
+	<description>Spring Boot project to help with tracking transactions</description>
 	<properties>
 		<java.version>23</java.version>
 	</properties>

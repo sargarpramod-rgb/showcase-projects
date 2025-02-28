@@ -1,4 +1,4 @@
-package com.example.restservice.service;
+package com.transaction.service;
 
 import com.github.fracpete.quicken4j.QIFReader;
 import com.github.fracpete.quicken4j.Transaction;
