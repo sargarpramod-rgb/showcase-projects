@@ -3,6 +3,8 @@ package com.transaction.controller;
 import com.github.fracpete.quicken4j.QIFReader;
 import com.github.fracpete.quicken4j.Transaction;
 import com.github.fracpete.quicken4j.Transactions;
+import com.transaction.model.AggregatedTransactions;
+import com.transaction.model.EnhancedTransaction;
 import com.transaction.service.TransactionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,8 +34,11 @@ public class TransactionController {
     private TransactionService transactionService;
 
     private static final String UPLOAD_DIR = "uploads";
+    private static final String fileName = "payeeMapping.txt";
 
     private static final Logger logger = LoggerFactory.getLogger(TransactionController.class);
+
+    private static  Map<String, String> payeeToCategoryMapping = new HashMap<>();
 
     @GetMapping("/message")
     public String getMessage() {
@@ -61,7 +66,7 @@ public class TransactionController {
     }
 
     @PostMapping("/upload-transaction-file")
-    public ResponseEntity<Map<String, List<Transaction>>> getAllTransactions(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<Map<String, List<EnhancedTransaction>>> getAllTransactions(@RequestParam("file") MultipartFile file) {
         try {
             // Ensure upload directory exists
             File uploadDir = new File(UPLOAD_DIR);
@@ -77,20 +82,40 @@ public class TransactionController {
             Transactions trans = reader.read(filePath.toFile());
 
             // TODO : Move this logic to Service.
-            Map<String, List<Transaction>> transactionData = trans.stream().map(t -> {
+            Map<String, List<EnhancedTransaction>> transactionData = trans.stream().map(t -> {
 
-                Map<String, String> values = new HashMap<>();
+                EnhancedTransaction newTransaction = new EnhancedTransaction();
 
-                values.put("D", String.valueOf(t.getDate()));
-                values.put("T", t.getAmount().toString());
-                values.put("P", t.getPayee().contains("-") ? t.getPayee().split("-")[1]: t.getPayee());
 
-                return new Transaction(values);
-            }).collect(Collectors.groupingBy(Transaction::getPayee));
+                String transactionAmount = t.getValue("M");
+
+                newTransaction.setDate(t.getValue("D") + " " +
+                        transactionAmount.substring(transactionAmount.indexOf("MTXN TIME ")+1));
+                newTransaction.setAmount(t.getAmount());
+                newTransaction.setPayeeFullName(t.getPayee().contains("-") && t.getPayee().contains("@") ?t.getPayee().substring(t.getPayee().indexOf("-")+1,t.getPayee().indexOf("@")) : t.getPayee());
+                newTransaction.setPayee(t.getPayee().contains("-") ? t.getPayee().split("-")[1].trim(): t.getPayee().trim());
+                newTransaction.setTxnType(newTransaction.getAmount()<0?"Debit":"Credit");
+                if(!payeeToCategoryMapping.isEmpty()) {
+
+                    String categorySubCategoryData = payeeToCategoryMapping.get(newTransaction.getPayee());
+
+                    if(categorySubCategoryData!=null) {
+
+                        String[] split = categorySubCategoryData.split("\\|");
+
+                        newTransaction.setCategory(split[0]);
+                        newTransaction.setSubcategory(split[1]);
+                    }
+                }
+
+                return newTransaction;
+            }).collect(Collectors.groupingBy(EnhancedTransaction::getPayee));
+
+
 
             // Flatten and sort all transactions by amount after grouping
-            LinkedHashMap<String, List<Transaction>> collect = transactionData.entrySet().stream()
-                    .sorted(Comparator.comparingDouble(e -> e.getValue().stream().mapToDouble(Transaction::getAmount).sum()))
+            LinkedHashMap<String, List<EnhancedTransaction>> collect = transactionData.entrySet().stream()
+                    .sorted(Comparator.comparingDouble(e -> e.getValue().stream().mapToDouble(EnhancedTransaction::getAmount).sum()))
                     .collect(toMap(
                             Map.Entry::getKey,
                             Map.Entry::getValue,
@@ -104,6 +129,8 @@ public class TransactionController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         }
     }
+
+
 
     @PostMapping("/all-transactions")
     public ResponseEntity<Map<String, List<Transaction>>> getAllTransactions(@RequestParam("fileName") String fileName) {
@@ -142,6 +169,64 @@ public class TransactionController {
             return ResponseEntity.ok(transactionData);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
+    }
+
+    @PostMapping("/save-transactions")
+    public ResponseEntity<String> saveTransactions(@RequestBody List<AggregatedTransactions> aggregatedTransactions) {
+
+        logger.info("aggregatedTransactions " + aggregatedTransactions);
+
+        // 1. Save Payee to category, sub-category information.
+
+        // 2. Pass the transaction data
+
+        StringBuffer stringBuffer = new StringBuffer();
+
+        aggregatedTransactions.forEach(aggregatedTransaction -> {
+            stringBuffer.append(aggregatedTransaction.getPayee());
+            stringBuffer.append("|");
+            stringBuffer.append(aggregatedTransaction.getCategory());
+            stringBuffer.append("|");
+            stringBuffer.append(aggregatedTransaction.getSubcategory());
+            stringBuffer.append("|");
+            stringBuffer.append("\n");
+        });
+
+
+        try {
+            Path filePath = Path.of(UPLOAD_DIR, fileName);
+            Files.writeString(filePath, stringBuffer.toString());
+            populatePayeeMap();
+            ResponseEntity.ok("Data Saved Successfully");
+        } catch (IOException e) {
+            logger.error("Exception while saving the data {}", String.valueOf(e.getCause()));
+            ResponseEntity.internalServerError().body("Error while saving the data");
+        }
+
+        return ResponseEntity.ok("Data Saved Successfully");
+    }
+
+
+    private static void populatePayeeMap() {
+        Path payeeMappingFilePath = Path.of(UPLOAD_DIR, fileName);
+
+        if(Files.exists(payeeMappingFilePath)) {
+            try {
+                List<String> lines = Files.readString(payeeMappingFilePath).lines().toList();
+
+                // Convert list to map
+                payeeToCategoryMapping = lines.stream()
+                        .map(line -> line.split("\\|", 2))  // Split only on the first "|"
+                        .filter(parts -> parts.length == 2) // Ensure valid splits
+                        .collect(Collectors.toMap(
+                                parts -> parts[0].trim(),      // Key: first part (before "|")
+                                parts -> parts[1].trim()       // Value: remaining part
+                        ));
+
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 }

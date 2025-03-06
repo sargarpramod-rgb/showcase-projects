@@ -128,10 +128,28 @@ export default function MultiStepFormWithStyledTabs() {
     setData(data.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
   };
 
-  const handleSave = () => {
-    console.log("Saving Data:", data);
-    setIsSaved(true);
-    setTabIndex(2); // Move to Step 3 after saving
+  const handleSave = async (event) => {
+
+    try {
+            const response = await fetch("http://localhost:8080/api/save-transactions", {
+              method: "POST",
+               headers: {
+                      'Content-Type': 'application/json',
+                  },
+              body:  JSON.stringify(aggregatedData, null, 2)
+            });
+                console.log("aggregatedData" + JSON.stringify(aggregatedData, null, 2))
+            if (!response.ok) {
+              throw new Error("Error in data save");
+            }
+
+            const result = await response;
+            console.log("Data saved successfully:", result);
+            setIsSaved(true);
+            setTabIndex(2); // Move to Step 3 after saving
+          } catch (error) {
+            console.error("Error saving the data:", error);
+          }
   };
 
   const progressValue = tabIndex === 0 ? 33 : tabIndex === 1 ? 66 : 100;
@@ -165,6 +183,7 @@ export default function MultiStepFormWithStyledTabs() {
         acc.push({
           payee,
           totalAmount,
+          payeeFullName : filteredTransactions[0].payeeFullName,
           transactionCount: filteredTransactions.length,
           transactions: filteredTransactions,
           category: filteredTransactions[0].category,
@@ -182,6 +201,8 @@ export default function MultiStepFormWithStyledTabs() {
         transactionCount: smallTransactionsCount,
         transactions: smallTransactions
       });
+
+
     }
 
   const handleOpenChartDialog = () => {
@@ -342,7 +363,7 @@ export default function MultiStepFormWithStyledTabs() {
           <TableHead>
             <TableRow>
               <TableCell onClick={() => handleSort("payee")} style={{ cursor: 'pointer' }}>
-                <b>Payee</b>
+                <b>To/From</b>
               </TableCell>
               <TableCell><b>Total Amount</b></TableCell>
               <TableCell><b>Transaction Count</b></TableCell>
@@ -354,13 +375,22 @@ export default function MultiStepFormWithStyledTabs() {
             {aggregatedData.slice(page * rowsPerPage, (page + 1) * rowsPerPage).map((row) => (
               <TableRow key={row.payee}>
                 <TableCell>
-                    <MuiTooltip title={row.payee} arrow>
+                    <MuiTooltip title={row.payeeFullName} arrow>
                         <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "150px", display: "inline-block" }}>
                           {row.payee}
                         </span>
                     </MuiTooltip>
                 </TableCell>
-                <TableCell>{row.totalAmount.toFixed(2)}</TableCell>
+                <TableCell>
+                     <Typography
+                        style={{
+                            color: row.totalAmount > 0 ? "green" : "#ff6666",
+                            fontFamily: "'Poppins', sans-serif", letterSpacing: "0.5px"
+                        }}
+                    >
+                        {row.totalAmount.toFixed(2) > 0 ? `+₹${row.totalAmount.toFixed(2)}` : `-₹${Math.abs(row.totalAmount.toFixed(2))}`}
+                    </Typography>
+                </TableCell>
                 <TableCell>
                   <Button onClick={() => { setSelectedPayee(row); setOpenDialog(true); }}>
                     {row.transactionCount}
