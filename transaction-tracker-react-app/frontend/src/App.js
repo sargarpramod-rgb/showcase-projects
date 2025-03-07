@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Tooltip as MuiTooltip,AppBar, Tabs, Tab, Box, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, LinearProgress } from "@mui/material";
+import { Tooltip as MuiTooltip,AppBar, Tabs, Tab, Box, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, LinearProgress,IconButton,InputAdornment  } from "@mui/material";
 import { styled } from "@mui/system";
 import { CheckCircle, UploadFile, Edit, Save } from "@mui/icons-material";
 import { Dialog,
@@ -7,6 +7,7 @@ DialogActions, DialogContent, DialogTitle, TablePagination, Grid, MenuItem, Sele
 import { PieChart, Pie, Cell, Tooltip, Legend,ResponsiveContainer, BarChart,XAxis,YAxis,Bar } from "recharts";
 import mockResponse from './mockData'
 import { useDropzone } from 'react-dropzone';
+import ClearIcon from "@mui/icons-material/Clear"; // Import Clear Icon
 
 // Custom Styled Tabs
 const CustomTabs = styled(Tabs)({
@@ -165,11 +166,24 @@ export default function MultiStepFormWithStyledTabs() {
     return acc;
   }, []);
 
+  console.log("filtertext = " +filterText)
+
+
   let smallTransactionsCount = 0;
     let smallTransactionsTotal = 0;
      let smallTransactions = [];
-    const aggregatedData = Object.entries(data).reduce((acc, [payee, transactions]) => {
-      const filteredTransactions = transactions.filter(txn => Math.abs(txn.amount) >= 50);
+     const normalizedFilterPayee = filterText?.payee?.trim().toLowerCase() ?? "";
+             const normalizedFilterCategory = filterText?.category?.trim().toLowerCase() ?? "";
+             const normalizedFilterSubCategory = filterText?.subcategory?.trim().toLowerCase() ?? "";
+
+     const isPayeeSet = normalizedFilterPayee && normalizedFilterPayee.trim() !== "";
+     const isCategorySet = normalizedFilterCategory && normalizedFilterCategory.trim() !== "";
+     const isSubCategorySet = normalizedFilterSubCategory && normalizedFilterSubCategory.trim() !== "";
+    let aggregatedData = Object.entries(data).reduce((acc, [payee, transactions]) => {
+
+      const filteredTransactions = transactions.filter(txn => Math.abs(txn.amount) >= 50)
+
+
       const smallTxns = transactions.filter(txn => Math.abs(txn.amount) < 50);
 
       if (smallTxns.length > 0) {
@@ -201,9 +215,16 @@ export default function MultiStepFormWithStyledTabs() {
         transactionCount: smallTransactionsCount,
         transactions: smallTransactions
       });
-
-
     }
+
+    aggregatedData = aggregatedData.filter(txn => !isPayeeSet || txn.payee?.trim().toLowerCase().includes(normalizedFilterPayee))
+                            .filter(txn => !isCategorySet || (txn.category?.trim().toLowerCase().includes(normalizedFilterCategory)
+                                                     && txn.category !== "undefined"))
+                             .filter(txn => !isSubCategorySet || (txn.subcategory?.trim().toLowerCase().includes(normalizedFilterSubCategory)
+                                                                              && txn.subcategory !== "undefined"))
+
+
+    console.log("aggregatedData"+JSON.stringify(aggregatedData, null, 2))
 
   const handleOpenChartDialog = () => {
     console.log("Opening chart dialog"); // Debugging
@@ -219,8 +240,6 @@ export default function MultiStepFormWithStyledTabs() {
      setSelectedCategory(data.name);
    };
 
-   const tableData = Object.entries(data).flatMap(([key, values]) => values.map((item, index) => ({ ...item, payeeKey: key, index })))
-     .filter(row => row.payee.toLowerCase().includes(filterText.toLowerCase()));
 
    const categorySums = aggregatedData.reduce((acc, row) => {
      if (!row.transactions[0].category) return acc;
@@ -362,14 +381,35 @@ export default function MultiStepFormWithStyledTabs() {
         <Table stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell onClick={() => handleSort("payee")} style={{ cursor: 'pointer' }}>
-                <b>To/From</b>
-              </TableCell>
-              <TableCell><b>Total Amount</b></TableCell>
-              <TableCell><b>Transaction Count</b></TableCell>
-              <TableCell><b>Category</b></TableCell>
-              <TableCell><b>Sub-category</b></TableCell>
-            </TableRow>
+                  {[
+                    { key: "payee", label: "Payee" },
+                    { key: "totalAmount", label: "Total Amount" },
+                    { key: "transactionCount", label: "Transaction Count" },
+                    { key: "category", label: "Category" },
+                    { key: "subcategory", label: "Sub-category" }
+                  ].map(({ key, label }) => (
+                    <TableCell key={key}>
+                      {key !== "totalAmount" && key !== "transactionCount" ? ( <TextField
+                        size="small"
+                        variant="outlined"
+                        placeholder={`Search ${label}`}
+                        onChange={(e) => setFilterText(prev => ({ ...prev, [key]: e.target.value }))}
+                        value={filterText[key]}
+                        fullWidth
+                        InputProps={{
+                                      endAdornment: (
+                                        <InputAdornment position="end">
+                                          <IconButton  onClick={(e) => setFilterText(prev => ({ ...prev, [key]: "" }))} size="small">
+                                            <ClearIcon />
+                                          </IconButton>
+                                        </InputAdornment>
+                                      ),
+                                    }}
+
+                      />) : null}
+                    </TableCell>
+                  ))}
+                </TableRow>
           </TableHead>
           <TableBody>
             {aggregatedData.slice(page * rowsPerPage, (page + 1) * rowsPerPage).map((row) => (
