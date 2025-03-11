@@ -2,12 +2,12 @@ import React, { useState } from "react";
 import { Tooltip as MuiTooltip,AppBar, Tabs, Tab, Box, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, LinearProgress,IconButton,InputAdornment  } from "@mui/material";
 import { styled } from "@mui/system";
 import { CheckCircle, UploadFile, Edit, Save } from "@mui/icons-material";
-import { Dialog,
-DialogActions, DialogContent, DialogTitle, TablePagination, Grid, MenuItem, Select} from "@mui/material";
+import { Dialog,DialogActions, DialogContent, DialogTitle, TablePagination, Grid, MenuItem, Select} from "@mui/material";
 import { PieChart, Pie, Cell, Tooltip, Legend,ResponsiveContainer, BarChart,XAxis,YAxis,Bar } from "recharts";
 import mockResponse from './mockData'
 import { useDropzone } from 'react-dropzone';
 import ClearIcon from "@mui/icons-material/Clear"; // Import Clear Icon
+import CategorySelector from "./components/CategorySelector";
 
 // Custom Styled Tabs
 const CustomTabs = styled(Tabs)({
@@ -33,54 +33,6 @@ const CustomTab = styled(Tab)(({ selected }) => ({
   },
 }));
 
-function getRandomDate() {
-  const start = new Date(2023, 0, 1);
-  const end = new Date(2024, 11, 31);
-  const randomDate = new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
-  return randomDate.toLocaleDateString("en-GB"); // Format: dd-MM-yyyy
-}
-
-const categorySubcategories = {
-  "Household & Utilities": [
-      "Groceries(Online/offline)",
-      "Vegetables",
-      "Utilities",
-      "Society Maintenance",
-      "House Help",
-      "Transport",
-      "Service/Repairs",
-      "Adhoc"
-    ],
-  "EMI": [
-      "EMI",
-  ],
-   "Investments": [
-        "Investments",
-    ],
-    "Health & Personal Care": [
-      "Medicial",
-      "Saloon",
-      "Skin Care products",
-      "Doctor Visits",
-      "Vaccination"
-    ],
-    "Education": ["Stationary", "School Activities Fees", "School fees", "Tuition fees"],
-    "Food": ["Zepto","BBDaily","Zomato","Prashant Corner",
-    "Restaurants/Dine In", "Vegetables/Food"],
-    "Lifestyle & Entertainment": [
-      "Clothes",
-      "Electronics",
-      "Accessories",
-      "Entertainment",
-      "Travel (Domestic, International)",
-      "Hotel Stay",
-      "Car Service",
-      "Car Maintenance",
-      "Bike Repairs",
-      "Fuel"
-    ],
-    "Miscellaneous": ["Others"]
-};
 
 export default function MultiStepFormWithStyledTabs() {
   const [tabIndex, setTabIndex] = useState(0);
@@ -88,7 +40,6 @@ export default function MultiStepFormWithStyledTabs() {
   const [isSaved, setIsSaved] = useState(false);
 
     const [data, setData] = useState(mockResponse);
-    const [categories, setCategories] = useState(Object.keys(categorySubcategories));
     const [filterText, setFilterText] = useState("");
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -154,17 +105,6 @@ export default function MultiStepFormWithStyledTabs() {
   };
 
   const progressValue = tabIndex === 0 ? 33 : tabIndex === 1 ? 66 : 100;
-
-  const aggregatedData1 = Object.entries(data).reduce((acc, [payee, transactions]) => {
-    const totalAmount = transactions.reduce((sum, txn) => sum + txn.amount, 0);
-    acc.push({
-      payee,
-      totalAmount,
-      transactionCount: transactions.length,
-      transactions,
-    });
-    return acc;
-  }, []);
 
   console.log("filtertext = " +filterText)
 
@@ -266,39 +206,6 @@ export default function MultiStepFormWithStyledTabs() {
      .map(([subcategory, amount]) => ({ name: subcategory, value: amount }))
      .sort((a, b) => b.value - a.value)
      .slice(0, 10);
-
-  const handleCategoryChange = (event, payee) => {
-    const selectedCategory = event.target.value;
-    setData(prevData => {
-      const updatedData = { ...prevData };
-      Object.keys(updatedData).forEach((key) => {
-       const matchingTransactions = smallTransactions.some(txn => {
-       return txn.payee === key && "Small Transactions" === payee
-       });
-       console.log("key"+key)
-       console.log("matchingTransactions"+matchingTransactions)
-        updatedData[key] = updatedData[key].map((item) =>
-          item.payee === payee || matchingTransactions? { ...item, category: selectedCategory, subcategory: categorySubcategories[selectedCategory]?.[0] || "" } : item
-        );
-      });
-      return updatedData;
-    });
-  };
-
-   const handleSubcategoryChange = (event, payee) => {
-    const selectedSubcategory = event.target.value;
-    setData(prevData => {
-      const updatedData = { ...prevData };
-      Object.keys(updatedData).forEach((key) => {
-        const matchingTransactions = smallTransactions.some(txn => txn.payee === key)
-
-        updatedData[key] = updatedData[key].map((item) =>
-          item.payee === payee || matchingTransactions ? { ...item, subcategory: selectedSubcategory } : item
-        );
-      });
-      return updatedData;
-    });
-  };
 
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
@@ -437,31 +344,27 @@ export default function MultiStepFormWithStyledTabs() {
                   </Button>
                 </TableCell>
                <TableCell>
-                  <Select
-                    value={row.transactions[0].category || ""}
-                    onChange={(e) => handleCategoryChange(e, row.payee)}
-                    variant="outlined"
+                  <CategorySelector
+                    category={row.transactions[0].category}
+                    payee={row.payee}
+                    data={data}
+                    setData={setData}
+                    smallTransactions={smallTransactions}
+                    type="category"
                     size="small"
-                    fullWidth
-                  >
-                    {categories.map((cat) => (
-                      <MenuItem key={cat} value={cat}>{cat}</MenuItem>
-                    ))}
-                  </Select>
+                  />
                 </TableCell>
                 <TableCell>
-                  <Select
-                    value={row.transactions[0].subcategory || ""}
-                    onChange={(e) => handleSubcategoryChange(e, row.payee)}
-                    variant="outlined"
-                    size="small"
-                    fullWidth
-                    disabled={!row.transactions[0].category}
-                  >
-                    {(categorySubcategories[row.transactions[0].category] || []).map((subcat) => (
-                      <MenuItem key={subcat} value={subcat}>{subcat}</MenuItem>
-                    ))}
-                  </Select>
+                <CategorySelector
+                      category={row.transactions[0].category}
+                      subcategory={row.transactions[0].subcategory}
+                      payee={row.payee}
+                      data={data}
+                      setData={setData}
+                      smallTransactions={smallTransactions}
+                      type="subcategory"
+                      size="small"
+                     />
                 </TableCell>
               </TableRow>
             ))}
