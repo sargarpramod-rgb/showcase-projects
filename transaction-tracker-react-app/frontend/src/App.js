@@ -8,6 +8,8 @@ import mockResponse from './mockData'
 import { useDropzone } from 'react-dropzone';
 import ClearIcon from "@mui/icons-material/Clear"; // Import Clear Icon
 import CategorySelector from "./components/CategorySelector";
+import PayeeTransactionsDialog from "./components/PayeeTransactionsDialog";
+import CategoryBreakdownDialog from "./components/CategoryBreakdownDialog";
 
 // Custom Styled Tabs
 const CustomTabs = styled(Tabs)({
@@ -181,32 +183,6 @@ export default function MultiStepFormWithStyledTabs() {
    };
 
 
-   const categorySums = aggregatedData.reduce((acc, row) => {
-     if (!row.transactions[0].category) return acc;
-     acc[row.transactions[0].category] = (acc[row.transactions[0].category] || 0) + Math.abs(row.totalAmount.toFixed(2));
-     console.log("category sum " + acc[row.transactions[0].category])
-     return acc;
-   }, {});
-
-   const totalAmount = Object.values(categorySums).reduce((sum, value) => sum + value, 0);
-   const chartData = Object.entries(categorySums).map(([category, amount]) => ({
-     name: category,
-     value: amount,
-     percentage: ((amount / totalAmount) * 100).toFixed(2) + "%"
-   }));
-
-   const subcategorySums = aggregatedData.reduce((acc, row) => {
-     if (row.transactions[0].category === selectedCategory) {
-       acc[row.transactions[0].subcategory] = (acc[row.transactions[0].subcategory] || 0) + Math.abs(row.totalAmount.toFixed(2));
-     }
-     return acc;
-   }, {});
-
-   const subChartData = Object.entries(subcategorySums)
-     .map(([subcategory, amount]) => ({ name: subcategory, value: amount }))
-     .sort((a, b) => b.value - a.value)
-     .slice(0, 10);
-
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
     const sortTransactions = (data, sortKey, ascending = true) => {
@@ -371,82 +347,20 @@ export default function MultiStepFormWithStyledTabs() {
           </TableBody>
         </Table>
       </TableContainer>
-      <Dialog open={openChartDialog} onClose={handleCloseChartDialog} maxWidth="md" fullWidth>
-                  <DialogTitle>{selectedCategory ? `${selectedCategory} Breakdown` : "Category Breakdown"}</DialogTitle>
-                  <DialogContent>
-                   <Grid container spacing={2}>
-                   <Grid item xs={6}>
-                    <PieChart width={400} height={300}>
-                        <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%"
-                        outerRadius={120} label={(entry) => entry.percentage}
-                        onClick={(data, index) => {
-                           console.log("Clicked category:", data.name); // Debugging
-                           handleCategoryClick(data);
-                           }}>
-                          {chartData.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={colors[index % colors.length]}  />
-                          ))}
-                          animationDuration={800}
-                        </Pie>
-                        <Tooltip />
-                        <Legend />
-                      </PieChart>
-                     </Grid>
-                    {selectedCategory && (
-                                <Grid item xs={6}>
-                                  <ResponsiveContainer width="100%" height={300}>
-                                    <BarChart data={subChartData} barSize={15} barCategoryGap={5}
-                                     margin={{top: 5, right: 30, left: 20, bottom: 5,}}>
-                                      <XAxis dataKey="name" />
-                                      <YAxis domain={[0, 'dataMax + 10']} />
-                                      <Tooltip />
-                                      <Bar dataKey="value"
-                                        fill="#00a0fc"
-                                        stroke="#000000"
-                                        strokeWidth={1}>
-                                        {
-                                        subChartData.map((_, index) => (
-                                            <Cell key={`cell-${index}`} fill={barColors[index % barColors.length]}  />
-                                        ))
-                                        }
-                                        </Bar>
-                                    </BarChart>
-                                  </ResponsiveContainer>
-                                </Grid>
-                              )}
-                            </Grid>
-                  </DialogContent>
-                  <DialogActions>
-                    <Button onClick={handleCloseChartDialog} color="primary">Close</Button>
-                  </DialogActions>
-                </Dialog>
-                <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
-                        <DialogTitle>Transactions for {selectedPayee?.payee}</DialogTitle>
-                        <DialogContent>
-                          <TableContainer component={Paper}>
-                            <Table>
-                              <TableHead>
-                                <TableRow>
-                                  <TableCell><b>Date</b></TableCell>
-                                  <TableCell><b>Amount</b></TableCell>
-                                </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                {selectedPayee?.transactions.map((txn, index) => (
-                                  <TableRow key={index}>
-                                    <TableCell>{txn.date}</TableCell>
-                                    <TableCell>{txn.amount.toFixed(2)}</TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </TableContainer>
-                        </DialogContent>
-                        <DialogActions>
-                          <Button onClick={() => setOpenDialog(false)}>Close</Button>
-                        </DialogActions>
-                      </Dialog>
-      <TablePagination component="div" count={aggregatedData.length} page={page} onPageChange={(event, newPage) => setPage(newPage)} rowsPerPage={rowsPerPage} onRowsPerPageChange={(event) => setRowsPerPage(parseInt(event.target.value, 10))} />
+               <CategoryBreakdownDialog
+                    openChartDialog={openChartDialog}
+                    handleCloseChartDialog={handleCloseChartDialog}
+                    handleCategoryClick={handleCategoryClick}
+                    selectedCategory={selectedCategory}
+                    aggregatedData={aggregatedData}
+                />
+                <PayeeTransactionsDialog
+                    payee={selectedPayee?.payee}
+                    payeeTransactions={selectedPayee?.transactions}
+                    openDialog={openDialog}
+                    setOpenDialog={setOpenDialog}
+                />
+             <TablePagination component="div" count={aggregatedData.length} page={page} onPageChange={(event, newPage) => setPage(newPage)} rowsPerPage={rowsPerPage} onRowsPerPageChange={(event) => setRowsPerPage(parseInt(event.target.value, 10))} />
             <Button variant="contained" color="primary" onClick={handleSave} sx={{ mt: 2 }}>
               Save & Proceed
             </Button>
