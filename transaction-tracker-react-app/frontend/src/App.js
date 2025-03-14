@@ -2,10 +2,12 @@ import React, { useState } from "react";
 import { Tooltip as MuiTooltip,AppBar, Tabs, Tab, Box, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, TextField, LinearProgress,IconButton,InputAdornment  } from "@mui/material";
 import { styled } from "@mui/system";
 import { CheckCircle, UploadFile, Edit, Save } from "@mui/icons-material";
-import { Dialog,DialogActions, DialogContent, DialogTitle, TablePagination, Grid, MenuItem, Select} from "@mui/material";
+import {Drawer, List, ListItem, ListItemText, Card,Dialog,DialogActions, DialogContent, DialogTitle, TablePagination, Grid, MenuItem, Select} from "@mui/material";
 import { PieChart, Pie, Cell, Tooltip, Legend,ResponsiveContainer, BarChart,XAxis,YAxis,Bar } from "recharts";
 import mockResponse from './mockData'
 import { useDropzone } from 'react-dropzone';
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import SaveIcon from "@mui/icons-material/Save";
 import Transactions from "./components/Transactions";
 import PayeeTransactionsDialog from "./components/PayeeTransactionsDialog";
 import CategoryBreakdownDialog from "./components/CategoryBreakdownDialog";
@@ -40,12 +42,13 @@ export default function MultiStepFormWithStyledTabs() {
   const [file, setFile] = useState(null);
   const [isSaved, setIsSaved] = useState(false);
 
-    const [data, setData] = useState(mockResponse);
+    const [data, setData] = useState("");
     const [filterText, setFilterText] = useState("");
     const [openChartDialog, setOpenChartDialog] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState(null);
     const [selectedPayee, setSelectedPayee] = useState(null);
     const [openDialog, setOpenDialog] = useState(false);
+    const [selectedOption, setSelectedOption] = useState("upload");
 
   const handleFileUpload = async (event) => {
     const uploadedFile = event.target.files[0];
@@ -68,7 +71,6 @@ export default function MultiStepFormWithStyledTabs() {
         const result = await response.json();
         setData(result)
         console.log("File uploaded successfully:", result);
-        setTabIndex(1);
       } catch (error) {
         console.error("Error uploading file:", error);
       }
@@ -97,7 +99,6 @@ export default function MultiStepFormWithStyledTabs() {
             const result = await response;
             console.log("Data saved successfully:", result);
             setIsSaved(true);
-            setTabIndex(2); // Move to Step 3 after saving
           } catch (error) {
             console.error("Error saving the data:", error);
           }
@@ -215,80 +216,78 @@ export default function MultiStepFormWithStyledTabs() {
         console.log(sortedData)
         setData({ ...sortedData }); // Set sorted data back to state for the table
   };
-  const colors = ["#8884d8", "#82ca9d", "#ffc658", "#ff8042", "#8dd1e1"];
-  const barColors = ["#1f77b4", "#ff7f0e", "#2ca02c"]
 
 
   return (
-    <Box sx={{ width: "100%", maxWidth: "60%", margin: "auto", mt: 5, p: 3, bgcolor: "white", boxShadow: 3, borderRadius: 2 }}>
+    <Box sx={{ display: "flex", height: "100vh", backgroundColor: "#f4f6f8" }}>
       {/* Custom Styled Tabs */}
-      <AppBar position="static" sx={{ background: "transparent", boxShadow: "none" }}>
-        <CustomTabs value={tabIndex} onChange={(e, newValue) => setTabIndex(newValue)} variant="fullWidth">
-          <CustomTab label="Upload File" icon={<UploadFile />} selected={tabIndex === 0} />
-          <CustomTab label="Edit Data" icon={<Edit />} selected={tabIndex === 1} disabled={!file} />
-          <CustomTab label="Save Data" icon={<Save />} selected={tabIndex === 2} disabled={!isSaved} />
-        </CustomTabs>
-      </AppBar>
+      <Drawer variant="permanent" anchor="left" sx={{ width: 240, flexShrink: 0, "& .MuiDrawer-paper": { width: 240, boxSizing: "border-box" }}}>
+        <List>
+          <ListItem button onClick={() => setSelectedOption("upload")}>
+            <ListItemText primary="Upload Transactions" />
+          </ListItem>
+          <ListItem button onClick={() => setSelectedOption("view")}>
+            <ListItemText primary="View Past Transactions" />
+          </ListItem>
+        </List>
+      </Drawer>
+        <Box sx={{ flexGrow: 1, p: 3 }}>
+            {selectedOption === "upload" && (
+              <Card sx={{ p: 3, boxShadow: 3 }}>
+                <Typography variant="h5" gutterBottom>
+                  Upload Transactions
+                </Typography>
+                <Button variant="contained" component="label" startIcon={<CloudUploadIcon />} sx={{ mb: 2 }}>
+                  Upload File
+                  <input type="file" hidden onChange={handleFileUpload} />
+                </Button>
 
-      {/* Step Progress Indicator */}
-      <Box sx={{ my: 2 }}>
-        <LinearProgress variant="determinate" value={progressValue} sx={{ height: 8, borderRadius: 5 }} />
-      </Box>
+            {aggregatedData.length > 0 && (
+              <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Edit Transactions
+                  </Typography>
+                    <Grid container spacing={2} alignItems="center" justifyContent="space-between">
+                        <Grid item xs={12} sm={6} textAlign="right">
+                          <Button variant="contained" color="secondary" onClick={handleOpenChartDialog}>
+                            Show Pie Chart
+                          </Button>
+                        </Grid>
+                      </Grid>
+                  <Transactions
+                        filters={{ filterText, setFilterText }}
+                        transactionsData={{ aggregatedData, data, setData, smallTransactions }}
+                        modalHandlers={{ setSelectedPayee, setOpenDialog }}
+                   />
+                   <CategoryBreakdownDialog
+                        openChartDialog={openChartDialog}
+                        handleCloseChartDialog={handleCloseChartDialog}
+                        handleCategoryClick={handleCategoryClick}
+                        selectedCategory={selectedCategory}
+                        aggregatedData={aggregatedData}
+                    />
+                    <PayeeTransactionsDialog
+                        payee={selectedPayee?.payee}
+                        payeeTransactions={selectedPayee?.transactions}
+                        openDialog={openDialog}
+                        setOpenDialog={setOpenDialog}
+                    />
+                    <Button variant="contained" color="primary" startIcon={<SaveIcon />} sx={{ mt: 2 }} onClick={handleSave}>
+                      Save Transactions
+                    </Button>
+              </Box>
+            )}
+          </Card>
+         )}
 
-      <Box sx={{ p: 3 }}>
-        {tabIndex === 0 && (
-          <Box textAlign="center">
-            <input type="file" onChange={handleFileUpload} style={{ marginBottom: "10px" }} />
-            <Typography variant="body2" color="textSecondary">
-              Upload a PDF file to proceed.
-            </Typography>
-          </Box>
-        )}
-
-        {tabIndex === 1 && (
-          <Box>
-            <Grid container spacing={2} alignItems="center" justifyContent="space-between">
-                <Grid item xs={12} sm={6} textAlign="right">
-                  <Button variant="contained" color="secondary" onClick={handleOpenChartDialog}>
-                    Show Pie Chart
-                  </Button>
-                </Grid>
-              </Grid>
-              <Transactions
-                    filters={{ filterText, setFilterText }}
-                    transactionsData={{ aggregatedData, data, setData, smallTransactions }}
-                    modalHandlers={{ setSelectedPayee, setOpenDialog }}
-               />
-               <CategoryBreakdownDialog
-                    openChartDialog={openChartDialog}
-                    handleCloseChartDialog={handleCloseChartDialog}
-                    handleCategoryClick={handleCategoryClick}
-                    selectedCategory={selectedCategory}
-                    aggregatedData={aggregatedData}
-                />
-                <PayeeTransactionsDialog
-                    payee={selectedPayee?.payee}
-                    payeeTransactions={selectedPayee?.transactions}
-                    openDialog={openDialog}
-                    setOpenDialog={setOpenDialog}
-                />
-            <Button variant="contained" color="primary" onClick={handleSave} sx={{ mt: 2 }}>
-              Save & Proceed
-            </Button>
-          </Box>
-        )}
-
-        {tabIndex === 2 && (
-          <Box textAlign="center">
-            <CheckCircle sx={{ fontSize: 50, color: "green" }} />
-            <Typography variant="h5" color="success.main">
-              Data Saved Successfully!
-            </Typography>
-            <Typography variant="body2" color="textSecondary">
-              Your data has been sent to the backend.
-            </Typography>
-          </Box>
-        )}
+            {selectedOption === "view" && (
+              <Card sx={{ p: 3, boxShadow: 3 }}>
+                <Typography variant="h5" gutterBottom>
+                  Past Transactions
+                </Typography>
+                <Typography variant="body1">Functionality to view past transactions will be implemented here.</Typography>
+              </Card>
+            )}
       </Box>
     </Box>
   );
