@@ -5,10 +5,10 @@ A simple web application to help users upload, categorize, and visualize their f
 
 ## 🚀 Features
 
-- 📁 **Upload Transactions**: Import transaction files (CSV, Excel, or PDF).
+- 📁 **Upload Transactions**: Import transaction files (current supported format is MSMoney).
 - 🏷️ **Categorize Transactions**: Assign or edit categories for individual transactions.
 - 📊 **Visual Insights**: View a real-time pie chart breakdown of expenses by category.
-- 🔄 **Auto Save**: All changes are saved to the backend instantly (or with Save button).
+- 🔄 **Auto Save**: All changes are saved to file with save button.
 
 ## 🖥️ Tech Stack
 
