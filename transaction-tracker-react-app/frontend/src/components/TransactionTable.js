@@ -1,5 +1,3 @@
-// src/components/TransactionTable.js
-
 import React, { useState } from "react";
 import {
   Box,
@@ -18,8 +16,9 @@ import {
   FormControl,
   InputLabel,
 } from "@mui/material";
-import { ActionTypes, Directions } from "../types"; // Assuming these are defined in '../types'
+import { ActionTypes, Directions } from "../types";
 import { isTransactionValid } from "../App";
+
 /**
  * TransactionTable component displays and manages a list of transactions.
  * It provides functionality for adding, editing, and deleting transactions.
@@ -49,11 +48,14 @@ const TransactionTable = ({ initialTransactions, onTransactionsChange }) => {
    */
   const handleAdd = () => {
     // Determine the next available transaction ID
-
     const nextId =
       transactions.length > 0 ? Math.max(...transactions.map((t) => t.transactionId)) + 1 : 1;
     const txnToAdd = { ...newTxn, transactionId: nextId };
-     if (!isTransactionValid(txnToAdd, transactions)) return;
+
+    // --- Validation check using the external isTransactionValid function ---
+    if (!isTransactionValid(txnToAdd, transactions)) {
+      return;
+    }
 
     const updatedTransactions = [...transactions, txnToAdd];
     setTransactions(updatedTransactions);
@@ -85,6 +87,7 @@ const TransactionTable = ({ initialTransactions, onTransactionsChange }) => {
    * Resets `editingId` to null and notifies parent of changes.
    */
   const handleSave = () => {
+
     setEditingId(null);
     onTransactionsChange?.(transactions); // Notify parent of changes
   };
@@ -102,12 +105,7 @@ const TransactionTable = ({ initialTransactions, onTransactionsChange }) => {
     setTransactions(updatedTransactions);
   };
 
-  /**
-   * Helper function to safely parse integer values from input.
-   * Returns 0 if parsing fails.
-   * @param {string} value - The string value to parse.
-   * @returns {number} The parsed integer or 0.
-   */
+
   const parseIntegerInput = (value) => {
     const parsed = parseInt(value, 10);
     return isNaN(parsed) ? 0 : parsed;
@@ -140,38 +138,13 @@ const TransactionTable = ({ initialTransactions, onTransactionsChange }) => {
                   {txn.transactionId}
                 </TableCell>
                 <TableCell align="center">
-                  {editingId === txn.transactionId ? (
-                    <TextField
-                      type="number"
-                      value={txn.tradeId}
-                      onChange={(e) =>
-                        handleChange(txn.transactionId, "tradeId", parseIntegerInput(e.target.value))
-                      }
-                      size="small"
-                      variant="outlined"
-                      sx={{ width: 80 }}
-                    />
-                  ) : (
-                    txn.tradeId
-                  )}
+                  {txn.tradeId}
                 </TableCell>
                 <TableCell align="center">
-                  {editingId === txn.transactionId ? (
-                    <TextField
-                      type="number"
-                      value={txn.version}
-                      onChange={(e) =>
-                        handleChange(txn.transactionId, "version", parseIntegerInput(e.target.value))
-                      }
-                      size="small"
-                      variant="outlined"
-                      sx={{ width: 80 }}
-                    />
-                  ) : (
-                    txn.version
-                  )}
+                  {txn.version}
                 </TableCell>
                 <TableCell align="center">
+                  {/* Security Code - Editable */}
                   {editingId === txn.transactionId ? (
                     <TextField
                       type="text"
@@ -186,6 +159,7 @@ const TransactionTable = ({ initialTransactions, onTransactionsChange }) => {
                   )}
                 </TableCell>
                 <TableCell align="center">
+                  {/* Quantity - Editable */}
                   {editingId === txn.transactionId ? (
                     <TextField
                       type="number"
@@ -202,26 +176,10 @@ const TransactionTable = ({ initialTransactions, onTransactionsChange }) => {
                   )}
                 </TableCell>
                 <TableCell align="center">
-                  {editingId === txn.transactionId ? (
-                    <FormControl size="small" sx={{ minWidth: 100 }}>
-                      <Select
-                        value={txn.action}
-                        onChange={(e) => handleChange(txn.transactionId, "action", e.target.value)}
-                        variant="outlined"
-                        displayEmpty
-                      >
-                        {ActionTypes.map((type) => (
-                          <MenuItem key={type} value={type}>
-                            {type}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  ) : (
-                    txn.action
-                  )}
+                  {txn.action}
                 </TableCell>
                 <TableCell align="center">
+                  {/* Buy/Sell (Direction) - Editable */}
                   {editingId === txn.transactionId ? (
                     <FormControl size="small" sx={{ minWidth: 100 }}>
                       <Select
@@ -271,7 +229,7 @@ const TransactionTable = ({ initialTransactions, onTransactionsChange }) => {
               </TableRow>
             ))}
 
-            {/* Row for adding a new transaction */}
+            {/* Row for adding a new transaction - all fields editable here for new entry */}
             <TableRow sx={{ bgcolor: "action.hover" }}>
               <TableCell sx={{ color: "text.secondary" }}>Auto</TableCell>
               <TableCell align="center">

@@ -1,5 +1,3 @@
-// src/components/PositionTable.js
-
 import React from "react";
 import {
   Box,
@@ -52,7 +50,7 @@ const PositionTable = ({ positions }) => {
                 <TableCell
                   align="center"
                   sx={{
-                    fontWeight: "fontWeightSemibold", // Use MUI theme's font weight
+                    fontWeight: "fontWeightSemibold",
                     color: pos.netQuantity >= 0 ? "success.main" : "error.main", // Green for positive, red for negative
                   }}
                 >

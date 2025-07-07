@@ -1,9 +1,6 @@
-// src/utils/positionCalculator.js
-
 export function calculatePositions(transactions) {
   const tradeMap = new Map(); // Stores the latest version of each trade
 
-  // Step 1: Filter transactions to get the latest version for each tradeId
   for (const txn of transactions) {
     const existing = tradeMap.get(txn.tradeId);
     // Only store the transaction if it's new or has a higher version
@@ -12,9 +9,8 @@ export function calculatePositions(transactions) {
     }
   }
 
-  const positionMap = new Map(); // Stores the aggregated net quantity per securityCode
+  const positionMap = new Map();
 
-  // Step 2: Calculate positions based on the latest trade versions
   for (const [, txn] of tradeMap.entries()) {
     const prevQuantity = positionMap.get(txn.securityCode) || 0; // Get current quantity for security
 

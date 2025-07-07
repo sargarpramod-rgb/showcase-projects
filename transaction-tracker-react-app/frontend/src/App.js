@@ -1,5 +1,3 @@
-// src/App.js
-
 import React, { useState,useMemo } from "react";
 import TransactionTable from "./components/TransactionTable";
 import PositionTable from "./components/PositionTable";
@@ -7,8 +5,6 @@ import { calculatePositions } from "./utils/positionCalculator";
 
 export const isTransactionValid = (newTxn, transactions) => {
   const tradeTxns = transactions.filter(t => t.tradeId === newTxn.tradeId);
-
-  console.log("newTxn = " + newTxn.quantity)
 
   if (tradeTxns.length === 0 && newTxn.action !== "INSERT") {
     alert("First version must be an INSERT");
@@ -63,13 +59,37 @@ const App = () => {
   // 👇 This will recalculate positions every time transactions change
   const positions = useMemo(() => calculatePositions(transactions), [transactions]);
 
+const sendPositionsToAPI = async () => {
+  try {
+    const response = await fetch("http://localhost:8080/api/positions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(positions),
+    });
+    const text = await response.text();
+    alert("Success: " + text);
+  } catch (error) {
+    alert("Error sending positions: " + error.message);
+  }
+};
+
   return (
     <div className="container mx-auto p-4">
       <TransactionTable
         initialTransactions={transactions}
-        onTransactionsChange={setTransactions}
+        onTransactionsChange={(txns) => {
+          setTransactions(txns);
+          const newPositions = calculatePositions(txns);
+          sendPositionsToAPI(newPositions);
+        }}
       />
       <PositionTable positions={positions} />
+      <button
+        onClick={sendPositionsToAPI}
+        className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+      >
+        Send Positions to Server
+      </button>
     </div>
   );
 };
