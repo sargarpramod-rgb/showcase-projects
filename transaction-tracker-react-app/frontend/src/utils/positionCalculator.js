@@ -18,29 +18,18 @@ export function calculatePositions(transactions) {
   for (const [, txn] of tradeMap.entries()) {
     const prevQuantity = positionMap.get(txn.securityCode) || 0; // Get current quantity for security
 
+    console.log("txn.securityCode = " + txn.securityCode)
+    console.log("prevQuantity = "+prevQuantity)
     let quantityChange = 0;
-
-    // If the action is 'CANCEL', the quantity for this security from this trade should be zeroed out.
-    // This assumes a 'CANCEL' transaction effectively reverses the previous effect of that specific trade.
-    // To implement this, we need to know the *original* quantity of the trade being cancelled.
-    // However, the current structure only gives us the *final* state of the trade.
-    // A more robust 'CANCEL' would typically require linking to the original 'INSERT' or 'UPDATE'.
-    //
-    // Given the prompt "update the logic for cancel to show 0 as value",
-    // we'll interpret this as: if the *latest* version of a trade is 'CANCEL',
-    // then that specific trade contributes 0 to the net quantity.
-    // If the 'CANCEL' implies undoing a *previous* quantity, the logic would be more complex
-    // requiring tracking historical states of each trade.
-    //
-    // For simplicity, based on "show 0 as value", we will simply make sure this cancelled
-    // trade does not add its quantity to the running total. If a security's total
-    // becomes 0 due to all its related trades being cancelled or netting out, that's the result.
 
     if (txn.action === "CANCEL") {
       quantityChange = 0;
     } else {
       const sign = txn.direction === "Buy" ? 1 : -1;
+      console.log("sign = "+sign)
       quantityChange = sign * txn.quantity;
+      console.log("quantityChange = "+quantityChange)
+      console.log("final quantity = "+(prevQuantity + quantityChange))
     }
 
     // Update the position for the security code

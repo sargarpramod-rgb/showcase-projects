@@ -19,7 +19,7 @@ import {
   InputLabel,
 } from "@mui/material";
 import { ActionTypes, Directions } from "../types"; // Assuming these are defined in '../types'
-
+import { isTransactionValid } from "../App";
 /**
  * TransactionTable component displays and manages a list of transactions.
  * It provides functionality for adding, editing, and deleting transactions.
@@ -49,9 +49,11 @@ const TransactionTable = ({ initialTransactions, onTransactionsChange }) => {
    */
   const handleAdd = () => {
     // Determine the next available transaction ID
+
     const nextId =
       transactions.length > 0 ? Math.max(...transactions.map((t) => t.transactionId)) + 1 : 1;
     const txnToAdd = { ...newTxn, transactionId: nextId };
+     if (!isTransactionValid(txnToAdd, transactions)) return;
 
     const updatedTransactions = [...transactions, txnToAdd];
     setTransactions(updatedTransactions);
