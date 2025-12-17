@@ -46,12 +46,11 @@
 
 		<!-- The modern MySQL Connector for Java 23 / Spring Boot 3+ -->
 		<dependency>
-			<groupId>com.mysql</groupId>
-			<artifactId>mysql-connector-j</artifactId>
-			<!-- Version can often be omitted if using a recent Spring Boot Parent
-                 POM, but explicit 8.4.0 is safest for Java 23 compatibility -->
-			<version>8.4.0</version>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+			<scope>runtime</scope>
 		</dependency>
+
 
 	</dependencies>
 

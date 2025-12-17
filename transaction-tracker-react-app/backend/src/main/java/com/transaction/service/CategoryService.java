@@ -25,9 +25,9 @@ public class CategoryService {
 
     public List<Category> getAllCategories() {
         List<String> categories = new ArrayList<>();
-        String sql = "SELECT c.id,c.name,sc.name\n" +
-                "FROM trn_dbo.categories c\n" +
-                "join trn_dbo.subcategories sc\n" +
+        String sql = "SELECT c.id as category_id,c.name AS category_name,sc.name AS subcategory_name\n" +
+                "FROM categories c\n" +
+                "join subcategories sc\n" +
                 "on c.id=sc.category_id";
 
         List<Category> categoryList = new ArrayList<>();
@@ -39,13 +39,13 @@ public class CategoryService {
 
             while (rs.next()) {
 
-                String categoryName = rs.getString("c.name");
+                String categoryName = rs.getString("category_name");
 
                 Optional<Category> existingCategory = categoryList.stream()
                         .filter(c -> c.getName().equals(categoryName))
                         .findFirst();
                 SubCategory subCategory = new SubCategory();
-                subCategory.setName(rs.getString("sc.name"));
+                subCategory.setName(rs.getString("subcategory_name"));
                 if(existingCategory.isPresent()) {
                     existingCategory.get().getSubCategoryList().add(subCategory);
                 } else {

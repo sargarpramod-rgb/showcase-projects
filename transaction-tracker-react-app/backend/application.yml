@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: jdbc:h2:file:/data/h2/app-db
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+logging:
+  level:
+    org.springframework.jdbc.core: DEBUG
