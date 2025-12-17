@@ -1,7 +1,5 @@
 package com.transaction.service;
 
-import org.apache.lucene.analysis.standard.StandardAnalyzer;
-import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 
 import java.io.StringReader;
 import java.util.*;
@@ -23,17 +21,17 @@ public class PayeeMatchService {
     }
 
     public static Map<String, Double> tokenize(String text) throws Exception {
-        StandardAnalyzer analyzer = new StandardAnalyzer();
+       // StandardAnalyzer analyzer = new StandardAnalyzer();
         StringReader reader = new StringReader(text);
         Map<String, Double> termFrequency = new HashMap<>();
 
-        try (var tokenStream = analyzer.tokenStream(null, reader)) {
+       /* try (var tokenStream = analyzer.tokenStream(null, reader)) {
             tokenStream.reset();
             while (tokenStream.incrementToken()) {
                 String term = tokenStream.getAttribute(CharTermAttribute.class).toString();
                 termFrequency.put(term, termFrequency.getOrDefault(term, 0.0) + 1);
             }
-        }
+        }*/
         return termFrequency;
     }
 

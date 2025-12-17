@@ -1,80 +1,145 @@
-import React, { useState } from "react";
-import { MenuItem, Select, FormControl } from "@mui/material";
+import React, { useState, useEffect } from "react";
+import { MenuItem, Select, FormControl, CircularProgress } from "@mui/material";
 
-const categories = ["Household & Utilities", "EMI", "Investments", "Health & Personal Care","Education","Food",
-                    "Restaurants/Dine In","Lifestyle & Entertainment","Miscellaneous"];
-const categorySubcategories = {
-  "Household & Utilities": ["Groceries(Online/offline)","Vegetables","Utilities","Society Maintenance"
-                           ,"House Help","Transport","Service/Repairs","Adhoc"],
-  "EMI": ["EMI"],
-  "Investments": ["Investments"],
-  "Health & Personal Care": ["Medicial","Saloon","Skin Care products","Doctor Visits","Vaccination"],
-  "Education": ["Stationary", "School Activities Fees", "School fees", "Tuition fees"],
-  "Food": ["Zepto","BBDaily","Zomato","Prashant Corner","Restaurants/Dine In", "Vegetables/Food"],
-  "Lifestyle & Entertainment": ["Clothes","Electronics","Accessories","Entertainment",
-                            "Travel (Domestic, International)","Hotel Stay","Car Service",
-                            "Car Maintenance","Bike Repairs","Fuel"],
-  "Miscellaneous": ["Others"]
-};
+export default function CategorySelector({
+  category,
+  subcategory,
+  type,
+  data,
+  setData,
+  payee,
+  smallTransactions
+}) {
 
-export default function CategorySelector({ category, subcategory, type,data, setData,payee,smallTransactions }) {
+  const [categoryJson, setCategoryJson] = useState([]);
+  const [loading, setLoading] = useState(true);
 
- // State for selected category and subcategory
-   const [selectedCategory, setSelectedCategory] = useState("");
-   const [selectedSubcategory, setSelectedSubcategory] = useState("");
+  const [categories, setCategories] = useState([]);
+  const [categorySubcategories, setCategorySubcategories] = useState({});
 
+  // ====== Call API on mount ======
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const response = await fetch("http://localhost:8080/api/transaction-categories");
+        const json = await response.json();
+
+        setCategoryJson(json);
+
+        // Build categories array
+        setCategories(json.map((c) => c.name));
+
+        // Build subcategory map
+        const subMap = {};
+        json.forEach((item) => {
+          subMap[item.name] = item.subCategoryList.map((sub) => sub.name);
+        });
+        setCategorySubcategories(subMap);
+
+        setLoading(false);
+      } catch (error) {
+        console.error("Failed to load categories:", error);
+        setLoading(false);
+      }
+    };
+
+    fetchCategories();
+  }, []);
+
+  // ====== Existing Handlers ======
   const handleCategoryChange = (event, payee) => {
     const selectedCategory = event.target.value;
-    setData(prevData => {
+    setData((prevData) => {
       const updatedData = { ...prevData };
+
       Object.keys(updatedData).forEach((key) => {
-       const matchingTransactions = smallTransactions.some(txn => {
-       return txn.payee === key && "Small Transactions" === payee
-       });
-       console.log("key"+key)
-       console.log("matchingTransactions"+matchingTransactions)
+        const matchingTransactions = smallTransactions.some(
+          (txn) => txn.payee === key && payee === "Small Transactions"
+        );
+
         updatedData[key] = updatedData[key].map((item) =>
-          item.payee === payee || matchingTransactions? { ...item, category: selectedCategory, subcategory: categorySubcategories[selectedCategory]?.[0] || "" } : item
+          item.payee === payee || matchingTransactions
+            ? {
+                ...item,
+                category: selectedCategory,
+                subcategory:
+                  categorySubcategories[selectedCategory]?.[0] || ""
+              }
+            : item
         );
       });
+
       return updatedData;
     });
   };
 
-   const handleSubcategoryChange = (event, payee) => {
+  const handleSubcategoryChange = (event, payee) => {
     const selectedSubcategory = event.target.value;
-    setData(prevData => {
+
+    setData((prevData) => {
       const updatedData = { ...prevData };
+
       Object.keys(updatedData).forEach((key) => {
-        const matchingTransactions = smallTransactions.some(txn => txn.payee === key)
+        const matchingTransactions = smallTransactions.some(
+          (txn) => txn.payee === key
+        );
 
         updatedData[key] = updatedData[key].map((item) =>
-          item.payee === payee || matchingTransactions ? { ...item, subcategory: selectedSubcategory } : item
+          item.payee === payee || matchingTransactions
+            ? { ...item, subcategory: selectedSubcategory }
+            : item
         );
       });
+
       return updatedData;
     });
   };
 
+  // ===== Loading State =====
+  if (loading) {
+    return (
+      <FormControl size="small" sx={{ width: "100%" }}>
+        <CircularProgress size={20} />
+      </FormControl>
+    );
+  }
 
   return (
     <FormControl size="small" sx={{ width: "100%" }}>
-      {/* Show Category Dropdown */}
+      {/* CATEGORY DROPDOWN */}
       {type === "category" && (
-        <Select value={category || ""} onChange={(e) => handleCategoryChange(e, payee)} displayEmpty>
-          <MenuItem value="" disabled>Select Category</MenuItem>
+        <Select
+          value={category || ""}
+          onChange={(e) => handleCategoryChange(e, payee)}
+          displayEmpty
+        >
+          <MenuItem value="" disabled>
+            Select Category
+          </MenuItem>
           {categories.map((cat) => (
-            <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+            <MenuItem key={cat} value={cat}>
+              {cat}
+            </MenuItem>
           ))}
         </Select>
       )}
 
-      {/* Show Subcategory Dropdown */}
+      {/* SUBCATEGORY DROPDOWN */}
       {type === "subcategory" && (
-        <Select value={subcategory || ""} onChange={(e) => handleSubcategoryChange(e, payee)} displayEmpty disabled={!category}>
-          <MenuItem value="" disabled>Select Subcategory</MenuItem>
+        <Select
+          value={subcategory || ""}
+          onChange={(e) => handleSubcategoryChange(e, payee)}
+          displayEmpty
+          disabled={!category}
+        >
+          <MenuItem value="" disabled>
+            Select Subcategory
+          </MenuItem>
+
           {(categorySubcategories[category] || []).map((subcat) => (
-            <MenuItem key={subcat} value={subcat}>{subcat}</MenuItem>
+            <MenuItem key={subcat} value={subcat}>
+              {subcat}
+            </MenuItem>
           ))}
         </Select>
       )}

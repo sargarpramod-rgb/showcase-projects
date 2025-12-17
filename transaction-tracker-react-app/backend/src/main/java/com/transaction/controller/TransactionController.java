@@ -4,7 +4,9 @@ import com.github.fracpete.quicken4j.QIFReader;
 import com.github.fracpete.quicken4j.Transaction;
 import com.github.fracpete.quicken4j.Transactions;
 import com.transaction.model.AggregatedTransactions;
+import com.transaction.model.Category;
 import com.transaction.model.EnhancedTransaction;
+import com.transaction.service.CategoryService;
 import com.transaction.service.TransactionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -167,6 +169,19 @@ public class TransactionController {
 
 
             return ResponseEntity.ok(transactionData);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
+    }
+
+    @Autowired
+    CategoryService categoryService;
+
+    @GetMapping("/transaction-categories")
+    public ResponseEntity<List<Category>> transactionCategories() {
+        try {
+            List<Category> allCategories = categoryService.getAllCategories();
+            return ResponseEntity.ok(allCategories);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         }

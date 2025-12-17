@@ -38,6 +38,21 @@
 			<artifactId>quicken4j</artifactId>
 			<version>0.0.3</version>
 		</dependency>
+		<!-- This starter is crucial for basic Spring JDBC operations -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-jdbc</artifactId>
+		</dependency>
+
+		<!-- The modern MySQL Connector for Java 23 / Spring Boot 3+ -->
+		<dependency>
+			<groupId>com.mysql</groupId>
+			<artifactId>mysql-connector-j</artifactId>
+			<!-- Version can often be omitted if using a recent Spring Boot Parent
+                 POM, but explicit 8.4.0 is safest for Java 23 compatibility -->
+			<version>8.4.0</version>
+		</dependency>
+
 	</dependencies>
 
 	<build>
