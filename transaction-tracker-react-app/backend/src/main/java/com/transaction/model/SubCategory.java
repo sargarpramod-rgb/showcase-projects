@@ -1,14 +1,11 @@
 package com.transaction.model;
 
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+@Data
+@EqualsAndHashCode
 public class SubCategory {
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
+    private int subCategoryId;
     private String name;
 }

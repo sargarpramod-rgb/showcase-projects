@@ -1,6 +1,7 @@
 package com.transaction.service;
 
 import com.transaction.model.Category;
+import com.transaction.model.CategoryResponse;
 import com.transaction.model.SubCategory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -10,6 +11,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -23,46 +25,38 @@ public class CategoryService {
         this.dataSource = dataSource;
     }
 
-    public List<Category> getAllCategories() {
+
+    public List<CategoryResponse> getAllCategories() {
         List<String> categories = new ArrayList<>();
         String sql = "SELECT c.id as category_id,c.name AS category_name,sc.name AS subcategory_name\n" +
                 "FROM categories c\n" +
                 "join subcategories sc\n" +
                 "on c.id=sc.category_id";
 
-        List<Category> categoryList = new ArrayList<>();
+        Map<String, CategoryResponse> categoryResponseMap = new LinkedHashMap<>();
 
-        // Spring Boot automatically manages the connection pool via the configured DataSource
         try (Connection conn = dataSource.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql);
              ResultSet rs = pstmt.executeQuery()) {
 
+
             while (rs.next()) {
 
                 String categoryName = rs.getString("category_name");
+                String subCategoryName = rs.getString("subcategory_name");
 
-                Optional<Category> existingCategory = categoryList.stream()
-                        .filter(c -> c.getName().equals(categoryName))
-                        .findFirst();
-                SubCategory subCategory = new SubCategory();
-                subCategory.setName(rs.getString("subcategory_name"));
-                if(existingCategory.isPresent()) {
-                    existingCategory.get().getSubCategoryList().add(subCategory);
-                } else {
-                    Category category = new Category();
-                    category.setName(categoryName);
-                    List<SubCategory> subCategoryList = new ArrayList<>();
-                    subCategoryList.add(subCategory);
-                    category.setSubCategoryList(subCategoryList);
-                    categoryList.add(category);
-                }
+                CategoryResponse categoryResponse =
+                        categoryResponseMap.computeIfAbsent(
+                                categoryName,
+                                k -> new CategoryResponse(k, new ArrayList<>())
+                        );
 
+                categoryResponse.getSubCategories().add(subCategoryName);
             }
-
         } catch (SQLException e) {
             e.printStackTrace();
             // Handle exceptions appropriately
         }
-        return categoryList;
+        return new ArrayList<>(categoryResponseMap.values());
     }
 }

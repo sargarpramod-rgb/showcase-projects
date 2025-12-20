@@ -43,7 +43,7 @@ INSERT INTO subcategories (category_id, name) VALUES
 
 -- Food (updated subcategories)
 INSERT INTO subcategories (category_id, name) VALUES
-      ((SELECT id FROM categories WHERE name = 'Food'), 'Zomato'),
+      ((SELECT id FROM categories WHERE name = 'Food'), 'Zomato/Swiggy'),
       ((SELECT id FROM categories WHERE name = 'Food'), 'Prashant Corner'),
       ((SELECT id FROM categories WHERE name = 'Food'), 'Restaurants/Dine In');
 
@@ -59,3 +59,15 @@ INSERT INTO subcategories (category_id, name) VALUES
       ((SELECT id FROM categories WHERE name = 'Lifestyle & Entertainment'), 'Car Maintenance'),
       ((SELECT id FROM categories WHERE name = 'Lifestyle & Entertainment'), 'Bike Repairs'),
       ((SELECT id FROM categories WHERE name = 'Lifestyle & Entertainment'), 'Fuel');
+
+INSERT INTO payee_category_mapping (payee_name, category_id, subcategory_id)
+VALUES ('SWIGGY', 8, 1);
+
+INSERT INTO payee_category_mapping (payee_name, category_id, subcategory_id)
+VALUES ('ZOMATO', 8, 1);
+
+INSERT INTO payee_category_mapping (payee_name, category_id, subcategory_id)
+VALUES ('AMAZON', 9, 3);
+
+INSERT INTO payee_category_mapping (payee_name, category_id, subcategory_id)
+VALUES ('RASECC THANE', 2, 1);

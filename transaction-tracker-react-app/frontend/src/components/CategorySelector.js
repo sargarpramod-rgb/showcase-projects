@@ -27,15 +27,15 @@ export default function CategorySelector({
         setCategoryJson(json);
 
         // Build categories array
-        setCategories(json.map((c) => c.name));
+        setCategories(json.map((c) => c.categoryName));
 
         // Build subcategory map
         const subMap = {};
-        json.forEach((item) => {
-          subMap[item.name] = item.subCategoryList.map((sub) => sub.name);
-        });
-        setCategorySubcategories(subMap);
+          json.forEach((item) => {
+            subMap[item.categoryName] = item.subCategories;
+          });
 
+        setCategorySubcategories(subMap);
         setLoading(false);
       } catch (error) {
         console.error("Failed to load categories:", error);
