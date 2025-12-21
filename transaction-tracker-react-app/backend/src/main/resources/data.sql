@@ -1,6 +1,6 @@
 INSERT INTO categories (name) VALUES ('Household & Utilities'),('EMI'),('Investments'),('Miscellaneous'),
                                              ('Health & Personal Care'),('Education'),('Quick Commerce'),('Food'),
-                                             ('Lifestyle & Entertainment');
+                                             ('Lifestyle & Entertainment'),('Credit');
 
 -- Household & Utilities (updated subcategories)
     INSERT INTO subcategories (category_id, name) VALUES
@@ -45,7 +45,8 @@ INSERT INTO subcategories (category_id, name) VALUES
 INSERT INTO subcategories (category_id, name) VALUES
       ((SELECT id FROM categories WHERE name = 'Food'), 'Zomato/Swiggy'),
       ((SELECT id FROM categories WHERE name = 'Food'), 'Prashant Corner'),
-      ((SELECT id FROM categories WHERE name = 'Food'), 'Restaurants/Dine In');
+      ((SELECT id FROM categories WHERE name = 'Food'), 'Restaurants/Dine In'),
+      ((SELECT id FROM categories WHERE name = 'Food'), 'Egg/Mutton');
 
 -- Lifestyle & Entertainment
 INSERT INTO subcategories (category_id, name) VALUES
@@ -59,6 +60,12 @@ INSERT INTO subcategories (category_id, name) VALUES
       ((SELECT id FROM categories WHERE name = 'Lifestyle & Entertainment'), 'Car Maintenance'),
       ((SELECT id FROM categories WHERE name = 'Lifestyle & Entertainment'), 'Bike Repairs'),
       ((SELECT id FROM categories WHERE name = 'Lifestyle & Entertainment'), 'Fuel');
+
+INSERT INTO subcategories (category_id, name) VALUES
+      ((SELECT id FROM categories WHERE name = 'Credit'), 'Salary'),
+      ((SELECT id FROM categories WHERE name = 'Credit'), 'Dividends from stocks'),
+      ((SELECT id FROM categories WHERE name = 'Credit'), 'FD Sweeps'),
+      ((SELECT id FROM categories WHERE name = 'Credit'), 'Other Income');
 
 INSERT INTO payee_category_mapping (payee_name, category_id, subcategory_id)
 VALUES ('SWIGGY', 8, 1);

@@ -5,7 +5,11 @@ import org.springframework.web.bind.annotation.GetMapping;
 
 @Controller
 public class FrontendController {
-    @GetMapping("/{path:[^\\.]*}")
+    @GetMapping(value = {
+            "/",
+            "/{path:^(?!h2-console$).*$}",
+            "/{path:^(?!h2-console$).*$}/**"
+    })
     public String forwardToReact() {
         return "forward:/index.html";
     }

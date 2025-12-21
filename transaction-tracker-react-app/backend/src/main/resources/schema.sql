@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS payee_category_mapping (
 CREATE TABLE IF NOT EXISTS transactions (
       transaction_id VARCHAR(50) PRIMARY KEY,
       txn_date DATE NOT NULL,
+      txn_date_str VARCHAR2(255) NOT NULL,
       payee VARCHAR(255) NOT NULL,
       payee_full_name VARCHAR(500),
       amount DECIMAL(15, 2) NOT NULL,

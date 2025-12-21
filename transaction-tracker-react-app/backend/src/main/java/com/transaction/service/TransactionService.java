@@ -7,6 +7,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -31,16 +33,16 @@ public class TransactionService {
     public List<PayeeCategoryResponse> getPayeeCategoryMappings() {
 
         String sql = """
-                SELECT 
-                    pc.payee_name,
-                    c.name AS category_name,
-                    sc.name AS subcategory_name
-                FROM payee_category_mapping pc
-                JOIN categories c
-                    ON pc.category_id = c.id
-                JOIN subcategories sc
-                    ON pc.subcategory_id = sc.id
-                where pc.category_id = sc.category_id
+              SELECT
+              pc.payee_name,
+              c.name AS category_name,
+              sc.name AS subcategory_name
+              FROM payee_category_mapping pc
+              JOIN categories c
+              ON pc.category_id = c.id
+              JOIN subcategories sc
+              ON pc.category_id= sc.category_id
+              AND pc.subcategory_id=sc.id
                 """;
 
         return jdbcTemplate.query(sql, (rs, rowNum) ->
@@ -120,14 +122,25 @@ public class TransactionService {
 
 
         List<Object[]> batchArgs = transactions.stream()
+                .filter(txn -> Objects.nonNull(txn.getCategory())
+                        && Objects.nonNull(txn.getSubcategory()))
                 .map(txn -> {
                     Long categoryId = categoryMap.get(txn.getCategory());
-                    Long subCategoryId = subcategoryMap.getOrDefault(txn.getCategory(), Map.of())
-                            .get(txn.getSubcategory());
+                    Long subCategoryId = getSubCategoryId(txn.getCategory(), txn.getSubcategory());
+
+                    String dateString = txn.getDate();
+
+                    // Remove "TXN TIME " and get only the date part
+                    String datePart = dateString.split(" TXN TIME ")[0];
+                    // Define formatter
+                    DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MM-dd-yyyy");
+                    // Parse to LocalDate
+                    LocalDate localDate = LocalDate.parse(datePart, dateFormatter);
 
                     return new Object[]{
                             txn.getTransactionId(),
-                            txn.getDate(),
+                            localDate,
+                            dateString,
                             txn.getPayee(),
                             txn.getPayeeFullName(),
                             txn.getAmount(),
@@ -140,21 +153,52 @@ public class TransactionService {
 
         // 4️⃣ Batch insert
         String sql = """
-        INSERT INTO transactions
-        (transaction_id, txn_date, payee, payee_full_name, amount, txn_type, category_id, subcategory_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-        payee = VALUES(payee),
-        payee_full_name = VALUES(payee_full_name),
-        amount = VALUES(amount),
-        txn_type = VALUES(txn_type),
-        category_id = VALUES(category_id),
-        subcategory_id = VALUES(subcategory_id)
+                MERGE INTO transactions (transaction_id, txn_date,txn_date_str, payee, payee_full_name, amount, txn_type, category_id, subcategory_id)
+                KEY(transaction_id)
+                VALUES (?, ?, ?,?, ?, ?, ?, ?, ?);
+                
         """;
 
         jdbcTemplate.batchUpdate(sql, batchArgs);
     }
 
+// TODO : check why subategory map not getting populated as expected, resulting in
+    // this workaround.
+    private long getSubCategoryId(String categoryName, String subCategoryName) {
+        Map<String, Map<String, Long>> subCategoryMap1 = jdbcTemplate.query(
+                "SELECT id, category_id, name FROM subcategories",
+                rs -> {
+                    Map<String, Map<String, Long>> map = new HashMap<>();
+                    while (rs.next()) {
+                        Long categoryId1 = rs.getLong("category_id");
+                        String subName = rs.getString("name");
+                        Long subId = rs.getLong("id");
+
+                        String catName = categoryMap.entrySet()
+                                .stream()
+                                .filter(e -> e.getValue().equals(categoryId1))
+                                .map(Map.Entry::getKey)
+                                .findFirst()
+                                .orElse(null);
+
+                        map.computeIfAbsent(catName, k -> new HashMap<>())
+                                .put(subName, subId);
+                    }
+                    return map;
+                }
+        );
+
+
+        Long subCategoryId = subCategoryMap1.getOrDefault(categoryName, Map.of())
+                .get(subCategoryName);
+
+        if (subCategoryId == null) {
+            //TODO : temp workaround, as from UI in case Miscellouns is selected, getting subcategory as Vegetables/Fruits(offline) which is not correct.
+            subCategoryId = 1l;
+        }
+
+        return  subCategoryId;
+    }
 
     public LinkedHashMap<String, List<EnhancedTransaction>> updateTransactionDetails(Transactions trans) {
 

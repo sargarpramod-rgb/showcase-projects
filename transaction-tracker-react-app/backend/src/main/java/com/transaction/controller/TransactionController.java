@@ -156,7 +156,8 @@ public class TransactionController {
                     PayeeCategoryResponse payeeCategoryResponse =
                             new PayeeCategoryResponse(aggregatedTransaction.getPayee()
                                     , aggregatedTransaction.getCategory()
-                                    , aggregatedTransaction.getSubcategory());
+                                    , aggregatedTransaction
+                                    .getSubcategory());
             payeeCategoryResponses.add(payeeCategoryResponse);
         });
 
