@@ -11,6 +11,7 @@ import SaveIcon from "@mui/icons-material/Save";
 import Transactions from "./components/Transactions";
 import PayeeTransactionsDialog from "./components/PayeeTransactionsDialog";
 import CategoryBreakdownDialog from "./components/CategoryBreakdownDialog";
+import Upload from "./components/Upload";
 
 // Custom Styled Tabs
 const CustomTabs = styled(Tabs)({
@@ -49,10 +50,13 @@ export default function MultiStepFormWithStyledTabs() {
     const [selectedPayee, setSelectedPayee] = useState(null);
     const [openDialog, setOpenDialog] = useState(false);
     const [selectedOption, setSelectedOption] = useState("upload");
+    const [loading, setLoading] = useState(false);
 
   const handleFileUpload = async (event) => {
     const uploadedFile = event.target.files[0];
     setFile(uploadedFile);
+
+    setLoading(true);
 
     if (uploadedFile) {
       const formData = new FormData();
@@ -73,6 +77,8 @@ export default function MultiStepFormWithStyledTabs() {
         console.log("File uploaded successfully:", result);
       } catch (error) {
         console.error("Error uploading file:", error);
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -241,6 +247,9 @@ export default function MultiStepFormWithStyledTabs() {
                   Upload File
                   <input type="file" hidden onChange={handleFileUpload} />
                 </Button>
+
+            <Upload loading={{loading}}/>
+
 
             {aggregatedData.length > 0 && (
               <Box>
