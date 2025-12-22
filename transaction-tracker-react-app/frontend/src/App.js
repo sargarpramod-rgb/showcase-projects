@@ -13,11 +13,13 @@ import PayeeTransactionsDialog from "./components/PayeeTransactionsDialog";
 import CategoryBreakdownDialog from "./components/CategoryBreakdownDialog";
 import LoadingOverlay from "./components/LoadingOverlay";
 import TransactionSummaryView from "./components/TransactionSummaryView"
+import UploadView from "./components/UploadView"
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import InsertChartIcon from '@mui/icons-material/InsertChart'
 import { Chip } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+
 
 // Custom Styled Tabs
 const CustomTabs = styled(Tabs)({
@@ -59,38 +61,6 @@ export default function MultiStepFormWithStyledTabs() {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [showSummary, setShowSummary] = useState(false);
-
-  const handleFileUpload = async (event) => {
-    const uploadedFile = event.target.files[0];
-    setFile(uploadedFile);
-
-    setLoading(true);
-
-    if (uploadedFile) {
-      const formData = new FormData();
-      formData.append("file", uploadedFile);
-
-      try {
-        const response = await fetch("http://localhost:8080/api/upload-transaction-file", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!response.ok) {
-          throw new Error("File upload failed");
-        }
-
-        const result = await response.json();
-        setData(result)
-        console.log("File uploaded successfully:", result);
-      } catch (error) {
-        console.error("Error uploading file:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
-
 
   const handleChange = (id, key, value) => {
     setData(data.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
@@ -182,21 +152,6 @@ export default function MultiStepFormWithStyledTabs() {
                                                                               && txn.subcategory !== "undefined"))
 
 
-
-   const summary = {
-     expenses: aggregatedData
-                      .flatMap(item => item.transactions.filter(txn => txn.txnType === "Debit"))
-                      .reduce((acc, txn) => acc + txn.amount, 0),
-     income: aggregatedData
-       .flatMap(item => item.transactions.filter(txn => txn.txnType === "Credit"))
-       .reduce((acc, txn) => acc + txn.amount, 0),
-     uncategorized: aggregatedData
-       .flatMap(item => item.transactions.filter(txn => !txn.category))
-       .length
-   };
-
-    const netBalance = summary.income - Math.abs(summary.expenses);
-    console.log("summary"+JSON.stringify(summary, null, 2))
     console.log("aggregatedData"+JSON.stringify(aggregatedData, null, 2))
 
   const handleOpenChartDialog = () => {
@@ -278,51 +233,13 @@ export default function MultiStepFormWithStyledTabs() {
         <Box sx={{ flexGrow: 1, p: 3 }}>
             {selectedOption === "upload" && (
               <Card sx={{ p: 3, boxShadow: 3 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                   <input
-                     accept="file/*"
-                     style={{ display: 'none' }}
-                     id="upload-file"
-                     type="file"
-                     onChange={handleFileUpload}
-                   />
-
-                   <label htmlFor="upload-file">
-                     <Button
-                       variant="contained"
-                       startIcon={<UploadFileIcon />}
-                       color="primary"
-                       component="span"
-                     >
-                       UPLOAD FILE
-                     </Button>
-                   </label>
-
-                    <Chip
-                      label={`Expenses: ₹${Math.abs(Math.round(summary.expenses))}`}
-                      color="error"
-                    />
-
-                    <Chip
-                      label={`Income: ₹${Math.round(summary.income)}`}
-                      color="success"
-                    />
-
-
-
-                    <Chip
-                      icon={netBalance < 0 ? <WarningIcon /> : <CheckCircleIcon />}
-                      label={`Net Balance: ₹${netBalance.toLocaleString()}`}
-                      color={netBalance < 0 ? "error" : "success"}
-                      variant="outlined"
-                    />
-
-                    <Chip
-                      label={`Uncategorized: ${summary.uncategorized}`}
-                      color="warning"
-                    />
-                    <Button variant="contained" startIcon={<InsertChartIcon />} onClick={handleOpenChartDialog} color="primary">SHOW CHARTS</Button>
-            </Box>
+            <UploadView
+                onFileChange={setFile}
+                onLoadingChange={setLoading}
+                onDataChange={setData}
+                handleOpenChartDialog={handleOpenChartDialog}
+                aggregatedData={aggregatedData}
+            />
             <LoadingOverlay loading={loading} message="Uploading…" />
             <LoadingOverlay loading={saving} message="Saving Transactions…" />
 
