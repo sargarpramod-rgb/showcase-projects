@@ -12,23 +12,11 @@ import InsertChartIcon from '@mui/icons-material/InsertChart'
 import { Chip } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import SummaryView from "./SummaryView"
 
 export default function UploadView({onFileChange, onLoadingChange, onDataChange,handleOpenChartDialog,aggregatedData}) {
 
- const summary = {
-     expenses: aggregatedData
-                      .flatMap(item => item.transactions.filter(txn => txn.txnType === "Debit"))
-                      .reduce((acc, txn) => acc + txn.amount, 0),
-     income: aggregatedData
-       .flatMap(item => item.transactions.filter(txn => txn.txnType === "Credit"))
-       .reduce((acc, txn) => acc + txn.amount, 0),
-     uncategorized: aggregatedData
-       .flatMap(item => item.transactions.filter(txn => !txn.category))
-       .length
-   };
 
-    const netBalance = summary.income - Math.abs(summary.expenses);
-    console.log("summary"+JSON.stringify(summary, null, 2))
 const handleFileUpload = async (event) => {
     const uploadedFile = event.target.files[0];
 
@@ -88,27 +76,7 @@ return (
                          </Button>
                        </label>
 
-                        <Chip
-                          label={`Expenses: ₹${Math.abs(Math.round(summary.expenses))}`}
-                          color="error"
-                        />
-
-                        <Chip
-                          label={`Income: ₹${Math.round(summary.income)}`}
-                          color="success"
-                        />
-
-                        <Chip
-                          icon={netBalance < 0 ? <WarningIcon /> : <CheckCircleIcon />}
-                          label={`Net Balance: ₹${netBalance.toLocaleString()}`}
-                          color={netBalance < 0 ? "error" : "success"}
-                          variant="outlined"
-                        />
-
-                        <Chip
-                          label={`Uncategorized: ${summary.uncategorized}`}
-                          color="warning"
-                        />
+                        <SummaryView aggregatedData={aggregatedData}/>
                         <Button variant="contained" startIcon={<InsertChartIcon />} onClick={handleOpenChartDialog} color="primary">SHOW CHARTS</Button>
                 </Box>
 
