@@ -11,7 +11,7 @@ import SaveIcon from "@mui/icons-material/Save";
 import Transactions from "./components/Transactions";
 import PayeeTransactionsDialog from "./components/PayeeTransactionsDialog";
 import CategoryBreakdownDialog from "./components/CategoryBreakdownDialog";
-import Upload from "./components/Upload";
+import LoadingOverlay from "./components/LoadingOverlay";
 
 // Custom Styled Tabs
 const CustomTabs = styled(Tabs)({
@@ -82,6 +82,7 @@ export default function MultiStepFormWithStyledTabs() {
       }
     }
   };
+
 
   const handleChange = (id, key, value) => {
     setData(data.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
@@ -248,7 +249,7 @@ export default function MultiStepFormWithStyledTabs() {
                   <input type="file" hidden onChange={handleFileUpload} />
                 </Button>
 
-            <Upload loading={{loading}}/>
+            <LoadingOverlay loading={loading} message="Uploading…" />
 
 
             {aggregatedData.length > 0 && (

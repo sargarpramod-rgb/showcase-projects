@@ -2,7 +2,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Backdrop from "@mui/material/Backdrop";
 import { Typography } from "@mui/material";
 
-export default function upload({loading}) {
+export default function LoadingOverlay({loading, message = "Loading…"}) {
 
 return (
            <Backdrop
@@ -15,7 +15,7 @@ return (
                        >
                          <CircularProgress color="inherit" />
                          <Typography variant="h6" sx={{ mt: 2 }}>
-                           Uploading…
+                           {message}
                          </Typography>
                        </Backdrop>
     );
