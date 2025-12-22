@@ -12,6 +12,7 @@ import Transactions from "./components/Transactions";
 import PayeeTransactionsDialog from "./components/PayeeTransactionsDialog";
 import CategoryBreakdownDialog from "./components/CategoryBreakdownDialog";
 import LoadingOverlay from "./components/LoadingOverlay";
+import TransactionSummaryView from "./components/TransactionSummaryView"
 
 // Custom Styled Tabs
 const CustomTabs = styled(Tabs)({
@@ -51,6 +52,8 @@ export default function MultiStepFormWithStyledTabs() {
     const [openDialog, setOpenDialog] = useState(false);
     const [selectedOption, setSelectedOption] = useState("upload");
     const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [showSummary, setShowSummary] = useState(false);
 
   const handleFileUpload = async (event) => {
     const uploadedFile = event.target.files[0];
@@ -90,6 +93,7 @@ export default function MultiStepFormWithStyledTabs() {
 
   const handleSave = async (event) => {
 
+    setSaving(true)
     try {
             const response = await fetch("http://localhost:8080/api/save-transactions", {
               method: "POST",
@@ -108,6 +112,8 @@ export default function MultiStepFormWithStyledTabs() {
             setIsSaved(true);
           } catch (error) {
             console.error("Error saving the data:", error);
+          } finally {
+             setSaving(false);
           }
   };
 
@@ -226,6 +232,17 @@ export default function MultiStepFormWithStyledTabs() {
 
 
   return (
+    <>
+
+    {showSummary && (
+      <TransactionSummaryView
+        summaryData={aggregatedData}
+        inflowChartData={''}
+        outflowChartData={''}
+      />
+    )}
+
+ {!showSummary && (
     <Box sx={{ display: "flex", height: "100vh", backgroundColor: "#f4f6f8" }}>
       {/* Custom Styled Tabs */}
       <Drawer variant="permanent" anchor="left" sx={{ width: 240, flexShrink: 0, "& .MuiDrawer-paper": { width: 240, boxSizing: "border-box" }}}>
@@ -250,7 +267,34 @@ export default function MultiStepFormWithStyledTabs() {
                 </Button>
 
             <LoadingOverlay loading={loading} message="Uploading…" />
+            <LoadingOverlay loading={saving} message="Saving Transactions…" />
 
+            <Dialog open={isSaved} onClose={() => setIsSaved(false)}>
+                    <DialogTitle>Success</DialogTitle>
+                    <DialogContent>
+                      <Typography>Transactions saved successfully!</Typography>
+                    </DialogContent>
+                    <DialogActions>
+                      <Button
+                        onClick={() => {
+                          setShowSummary(true);
+                          setIsSaved(false); // close dialog
+                        }}
+                        color="primary"
+                      >
+                        View Summary
+                      </Button>
+                    </DialogActions>
+                  </Dialog>
+
+
+            {showSummary && (
+              <TransactionSummaryView
+                summaryData={aggregatedData} // pass your processed summary data
+                inflowChartData={''}
+                outflowChartData={''}
+              />
+            )}
 
             {aggregatedData.length > 0 && (
               <Box>
@@ -300,5 +344,7 @@ export default function MultiStepFormWithStyledTabs() {
             )}
       </Box>
     </Box>
-  );
-}
+    )}
+    </>
+  )
+};
