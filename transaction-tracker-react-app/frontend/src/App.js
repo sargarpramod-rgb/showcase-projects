@@ -13,6 +13,11 @@ import PayeeTransactionsDialog from "./components/PayeeTransactionsDialog";
 import CategoryBreakdownDialog from "./components/CategoryBreakdownDialog";
 import LoadingOverlay from "./components/LoadingOverlay";
 import TransactionSummaryView from "./components/TransactionSummaryView"
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import InsertChartIcon from '@mui/icons-material/InsertChart'
+import { Chip } from '@mui/material';
+import WarningIcon from '@mui/icons-material/Warning';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
 // Custom Styled Tabs
 const CustomTabs = styled(Tabs)({
@@ -177,6 +182,21 @@ export default function MultiStepFormWithStyledTabs() {
                                                                               && txn.subcategory !== "undefined"))
 
 
+
+   const summary = {
+     expenses: aggregatedData
+                      .flatMap(item => item.transactions.filter(txn => txn.txnType === "Debit"))
+                      .reduce((acc, txn) => acc + txn.amount, 0),
+     income: aggregatedData
+       .flatMap(item => item.transactions.filter(txn => txn.txnType === "Credit"))
+       .reduce((acc, txn) => acc + txn.amount, 0),
+     uncategorized: aggregatedData
+       .flatMap(item => item.transactions.filter(txn => !txn.category))
+       .length
+   };
+
+    const netBalance = summary.income - Math.abs(summary.expenses);
+    console.log("summary"+JSON.stringify(summary, null, 2))
     console.log("aggregatedData"+JSON.stringify(aggregatedData, null, 2))
 
   const handleOpenChartDialog = () => {
@@ -258,14 +278,51 @@ export default function MultiStepFormWithStyledTabs() {
         <Box sx={{ flexGrow: 1, p: 3 }}>
             {selectedOption === "upload" && (
               <Card sx={{ p: 3, boxShadow: 3 }}>
-                <Typography variant="h5" gutterBottom>
-                  Upload Transactions
-                </Typography>
-                <Button variant="contained" component="label" startIcon={<CloudUploadIcon />} sx={{ mb: 2 }}>
-                  Upload File
-                  <input type="file" hidden onChange={handleFileUpload} />
-                </Button>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                   <input
+                     accept="file/*"
+                     style={{ display: 'none' }}
+                     id="upload-file"
+                     type="file"
+                     onChange={handleFileUpload}
+                   />
 
+                   <label htmlFor="upload-file">
+                     <Button
+                       variant="contained"
+                       startIcon={<UploadFileIcon />}
+                       color="primary"
+                       component="span"
+                     >
+                       UPLOAD FILE
+                     </Button>
+                   </label>
+
+                    <Chip
+                      label={`Expenses: ₹${Math.abs(Math.round(summary.expenses))}`}
+                      color="error"
+                    />
+
+                    <Chip
+                      label={`Income: ₹${Math.round(summary.income)}`}
+                      color="success"
+                    />
+
+
+
+                    <Chip
+                      icon={netBalance < 0 ? <WarningIcon /> : <CheckCircleIcon />}
+                      label={`Net Balance: ₹${netBalance.toLocaleString()}`}
+                      color={netBalance < 0 ? "error" : "success"}
+                      variant="outlined"
+                    />
+
+                    <Chip
+                      label={`Uncategorized: ${summary.uncategorized}`}
+                      color="warning"
+                    />
+                    <Button variant="contained" startIcon={<InsertChartIcon />} onClick={handleOpenChartDialog} color="primary">SHOW CHARTS</Button>
+            </Box>
             <LoadingOverlay loading={loading} message="Uploading…" />
             <LoadingOverlay loading={saving} message="Saving Transactions…" />
 
@@ -301,13 +358,7 @@ export default function MultiStepFormWithStyledTabs() {
                   <Typography variant="h6" gutterBottom>
                     Edit Transactions
                   </Typography>
-                    <Grid container spacing={2} alignItems="center" justifyContent="space-between">
-                        <Grid item xs={12} sm={6} textAlign="right">
-                          <Button variant="contained" color="secondary" onClick={handleOpenChartDialog}>
-                            Show Pie Chart
-                          </Button>
-                        </Grid>
-                      </Grid>
+
                   <Transactions
                         filters={{ filterText, setFilterText }}
                         transactionsData={{ aggregatedData, data, setData, smallTransactions }}
