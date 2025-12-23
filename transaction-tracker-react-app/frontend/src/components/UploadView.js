@@ -14,7 +14,7 @@ import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SummaryView from "./SummaryView"
 
-export default function UploadView({onFileChange, onLoadingChange, onDataChange,handleOpenChartDialog,aggregatedData}) {
+export default function UploadView({onFileChange, onLoadingChange, onDataChange,handleOpenChartDialog,aggregatedData,onUncategorizedClick,showUncategorized}) {
 
 
 const handleFileUpload = async (event) => {
@@ -76,7 +76,10 @@ return (
                          </Button>
                        </label>
 
-                        <SummaryView aggregatedData={aggregatedData}/>
+                        <SummaryView
+                        aggregatedData={aggregatedData}
+                        onUncategorizedClick={onUncategorizedClick}
+                        showUncategorized={showUncategorized} />
                         <Button variant="contained" startIcon={<InsertChartIcon />} onClick={handleOpenChartDialog} color="primary">SHOW CHARTS</Button>
                 </Box>
 

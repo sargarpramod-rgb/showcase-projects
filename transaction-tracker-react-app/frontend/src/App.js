@@ -62,6 +62,8 @@ export default function MultiStepFormWithStyledTabs() {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [showSummary, setShowSummary] = useState(false);
+    const [showUncategorized, setShowUncategorized] = useState(false);
+
 
   const handleChange = (id, key, value) => {
     setData(data.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
@@ -146,13 +148,44 @@ export default function MultiStepFormWithStyledTabs() {
       });
     }
 
-    aggregatedData = aggregatedData.filter(txn => !isPayeeSet || txn.payee?.trim().toLowerCase().includes(normalizedFilterPayee))
-                            .filter(txn => !isCategorySet || (txn.category?.trim().toLowerCase().includes(normalizedFilterCategory)
-                                                     && txn.category !== "undefined"))
-                             .filter(txn => !isSubCategorySet || (txn.subcategory?.trim().toLowerCase().includes(normalizedFilterSubCategory)
-                                                                              && txn.subcategory !== "undefined"))
+ console.log("original aggregatedData"+JSON.stringify(aggregatedData, null, 2))
+
+   aggregatedData = aggregatedData
+     .filter(item => !isPayeeSet || item.payee?.trim().toLowerCase().includes(normalizedFilterPayee))
+     .filter(item => !isCategorySet || (item.category?.trim().toLowerCase().includes(normalizedFilterCategory)
+                                        && item.category !== "undefined"))
+     .filter(item => !isSubCategorySet || (item.subcategory?.trim().toLowerCase().includes(normalizedFilterSubCategory)
+                                           && item.subcategory !== "undefined"))
+     .map(item => {
+       // safeguard for missing transactions
+       const txns = Array.isArray(item.transactions) ? item.transactions : [];
+
+       const filteredTxns = showUncategorized
+         ? txns.filter(txn => !txn.category) // only uncategorized
+         : txns;                             // all transactions
+
+       return {
+         ...item,
+         transactions: filteredTxns,
+         transactionCount: filteredTxns.length,
+         totalAmount: filteredTxns.reduce((sum, txn) => sum + txn.amount, 0)
+       };
+     })
+     // remove items that end up with no transactions
+     .filter(item => item.transactions.length > 0);
 
 
+    // compute uncategorized transactions at App level
+      const uncategorizedTxList = aggregatedData
+        .flatMap(item => item.transactions.filter(txn => !txn.category));
+
+      const uncategorizedCount = uncategorizedTxList.length;
+
+      const handleBulkApply = (selectedIds, category, subCategory) => {
+        // update logic here
+        console.log("Bulk apply:", selectedIds, category, subCategory);
+        setShowUncategorized(false); // optionally hide after apply
+      };
     console.log("aggregatedData"+JSON.stringify(aggregatedData, null, 2))
 
   const handleOpenChartDialog = () => {
@@ -240,12 +273,19 @@ export default function MultiStepFormWithStyledTabs() {
                 onDataChange={setData}
                 handleOpenChartDialog={handleOpenChartDialog}
                 aggregatedData={aggregatedData}
+                onUncategorizedClick={() => setShowUncategorized(prev => !prev)}
+                showUncategorized={showUncategorized}
             />
-            <UncategorizedView
-                 count={2}
-                 transactions={''}
-                 onBulkApply={''}
-             />
+
+            {showUncategorized && (
+                    <UncategorizedView
+                      count={uncategorizedCount}
+                      transactions={uncategorizedTxList}
+                      onBulkApply={handleBulkApply}
+                    />
+                  )}
+
+
             <LoadingOverlay loading={loading} message="Uploading…" />
             <LoadingOverlay loading={saving} message="Saving Transactions…" />
 
