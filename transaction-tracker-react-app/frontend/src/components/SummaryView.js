@@ -15,17 +15,19 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
 export default function SummaryView({aggregatedData}) {
 
+// use only transaction which are categorized, so when user updates category amount gets updated dynmaically.
 const summary = {
      expenses: aggregatedData
-                      .flatMap(item => item.transactions.filter(txn => txn.txnType === "Debit"))
+                      .flatMap(item => item.transactions.filter(txn => txn.category && txn.amount < 0))
                       .reduce((acc, txn) => acc + txn.amount, 0),
      income: aggregatedData
-       .flatMap(item => item.transactions.filter(txn => txn.txnType === "Credit"))
+       .flatMap(item => item.transactions.filter(txn => txn.category && txn.amount > 0))
        .reduce((acc, txn) => acc + txn.amount, 0),
      uncategorized: aggregatedData
        .flatMap(item => item.transactions.filter(txn => !txn.category))
        .length
    };
+
 
     const netBalance = summary.income - Math.abs(summary.expenses);
     console.log("summary"+JSON.stringify(summary, null, 2))

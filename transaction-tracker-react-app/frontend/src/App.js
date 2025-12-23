@@ -12,6 +12,7 @@ import Transactions from "./components/Transactions";
 import PayeeTransactionsDialog from "./components/PayeeTransactionsDialog";
 import CategoryBreakdownDialog from "./components/CategoryBreakdownDialog";
 import LoadingOverlay from "./components/LoadingOverlay";
+import UncategorizedView from "./components/UncategorizedView"
 import TransactionSummaryView from "./components/TransactionSummaryView"
 import UploadView from "./components/UploadView"
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -240,6 +241,11 @@ export default function MultiStepFormWithStyledTabs() {
                 handleOpenChartDialog={handleOpenChartDialog}
                 aggregatedData={aggregatedData}
             />
+            <UncategorizedView
+                 count={2}
+                 transactions={''}
+                 onBulkApply={''}
+             />
             <LoadingOverlay loading={loading} message="Uploading…" />
             <LoadingOverlay loading={saving} message="Saving Transactions…" />
 

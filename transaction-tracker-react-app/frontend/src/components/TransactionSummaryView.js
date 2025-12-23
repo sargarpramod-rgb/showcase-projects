@@ -1,113 +1,242 @@
 import React, { useState } from "react";
 import {
-  Card,
-  Typography,
-  Box,
-  Grid,
-  TextField,
-  MenuItem,
-  Button,
-  Table,
-  TableHead,
-  TableRow,
-  TableCell,
-  TableBody,
+  Card, Typography, Box, Grid, TextField, MenuItem,
+  Button, FormGroup, FormControlLabel, Checkbox, Paper,
+  Table, TableHead, TableRow, TableCell, TableBody
 } from "@mui/material";
-// If using Chart.js or Recharts, import here
-// import { Pie, Bar } from "react-chartjs-2";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer
+} from "recharts";
 
-export default function TransactionSummaryView({ summaryData, inflowChartData, outflowChartData }) {
-  const [selectedMonth, setSelectedMonth] = useState("December");
+export default function TransactionSummaryView() {
   const [selectedYear, setSelectedYear] = useState("2025");
+  const [selectedMonths, setSelectedMonths] = useState([]);
+  const [drillCategory, setDrillCategory] = useState(null);
+  const [drillSubcategory, setDrillSubcategory] = useState(null);
 
-  const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const months = ["January","February","March","April","May","June",
+                  "July","August","September","October","November","December"];
   const years = ["2023","2024","2025"];
 
-  const handleApplyFilter = () => {
-    // TODO: fetch filtered summary data from backend
-    console.log("Filter applied:", selectedMonth, selectedYear);
+  // TODO : Get the transactions
+  const transactions = [
+    { amount: -45000, category: "EMI", subcategory: "EMI", txnType: "Debit", month: "January", year: 2025 },
+    { amount: -5000, category: "Home Utilities", subcategory: "Repair", txnType: "Debit", month: "January", year: 2025 },
+    { amount: -500, category: "Home Utilities", subcategory: "Repair", txnType: "Debit", month: "February", year: 2025 },
+    { amount: 20000, category: "Salary", subcategory: "Monthly", txnType: "Credit", month: "January", year: 2025 },
+    { amount: 1000, category: "Interest", subcategory: "Monthly", txnType: "Credit", month: "January", year: 2025 },
+    { amount: 22000, category: "Salary", subcategory: "Monthly", txnType: "Credit", month: "February", year: 2025 },
+  ];
+
+  const handleMonthToggle = (month) => {
+    setSelectedMonths((prev) =>
+      prev.includes(month) ? prev.filter((m) => m !== month) : [...prev, month]
+    );
   };
+
+  const filtered = transactions.filter(
+    (t) => selectedMonths.includes(t.month) && t.year === parseInt(selectedYear)
+  );
+
+  // 🔹 Split into inflows vs outflows
+  const inflows = filtered.filter((t) => t.txnType === "Credit");
+  const outflows = filtered.filter((t) => t.txnType === "Debit");
+
+  // 🔹 Aggregate by category
+ // 🔹 Aggregate by category with normalization
+ const aggregateByCategoryPercent = (data) => {
+   // Step 1: aggregate raw totals
+   const totals = data.reduce((acc, row) => {
+     let existing = acc.find((item) => item.category === row.category);
+     if (!existing) {
+       existing = { category: row.category, total: 0 };
+       acc.push(existing);
+     }
+     existing.total += Math.abs(row.amount);
+     return acc;
+   }, []);
+
+   // Step 2: compute grand total
+   const grandTotal = totals.reduce((sum, item) => sum + item.total, 0);
+
+   // Step 3: convert to percentages
+   return totals.map((item) => ({
+     category: item.category,
+     percent: grandTotal > 0 ? ((item.total / grandTotal) * 100).toFixed(1) : 0,
+   }));
+ };
+
+ // 🔹 Use for inflows and outflows separately
+ const inflowChartData = aggregateByCategoryPercent(inflows);
+ const outflowChartData = aggregateByCategoryPercent(outflows);
+
+  // 🔹 Totals
+  const totalExpenses = outflows.reduce((sum, r) => sum + Math.abs(r.amount), 0);
+  const totalIncome = inflows.reduce((sum, r) => sum + Math.abs(r.amount), 0);
+  const netBalance = totalIncome - totalExpenses;
+
+  const colors = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b"];
+
+  // 🔹 Drill-down subcategories
+  const drillSubcategories = drillCategory
+    ? filtered.filter((t) => t.category === drillCategory)
+    : [];
+
+  // 🔹 Drill-down transactions
+  const drillTransactions = drillSubcategory
+    ? filtered.filter((t) => t.subcategory === drillSubcategory)
+    : [];
 
   return (
     <Card sx={{ p: 3, boxShadow: 3 }}>
-      <Typography variant="h5" gutterBottom>
-        Transaction Summary
-      </Typography>
+      <Typography variant="h5" gutterBottom>Transaction Summary</Typography>
 
-      {/* Filters */}
-      <Box sx={{ display: "flex", gap: 2, mb: 3 }}>
-        <TextField
-          select
-          label="Month"
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(e.target.value)}
-        >
-          {months.map((m) => (
-            <MenuItem key={m} value={m}>{m}</MenuItem>
-          ))}
-        </TextField>
-        <TextField
-          select
-          label="Year"
-          value={selectedYear}
-          onChange={(e) => setSelectedYear(e.target.value)}
-        >
-          {years.map((y) => (
-            <MenuItem key={y} value={y}>{y}</MenuItem>
-          ))}
-        </TextField>
-        <Button variant="contained" onClick={handleApplyFilter}>
-          Apply
-        </Button>
-      </Box>
-
-      {/* Visuals */}
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Typography variant="h6">Inflow by Category</Typography>
-          {/* Replace with <Pie data={inflowChartData} /> */}
-          <Box sx={{ height: 200, backgroundColor: "#e0f7fa" }}>Pie Chart Placeholder</Box>
+      {/* Summary Cards */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={4}>
+          <Paper sx={{ p: 2, bgcolor: "#ffebee" }}>
+            <Typography color="error" variant="h6">Expenses</Typography>
+            <Typography variant="h5">₹{totalExpenses}</Typography>
+          </Paper>
         </Grid>
-        <Grid item xs={12} md={6}>
-          <Typography variant="h6">Outflow by Category</Typography>
-          {/* Replace with <Bar data={outflowChartData} /> */}
-          <Box sx={{ height: 200, backgroundColor: "#fce4ec" }}>Bar Chart Placeholder</Box>
+        <Grid item xs={4}>
+          <Paper sx={{ p: 2, bgcolor: "#e8f5e9" }}>
+            <Typography color="success.main" variant="h6">Income</Typography>
+            <Typography variant="h5">₹{totalIncome}</Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={4}>
+          <Paper sx={{ p: 2, bgcolor: "#e3f2fd" }}>
+            <Typography variant="h6">Net Balance</Typography>
+            <Typography variant="h5" color={netBalance < 0 ? "error" : "success.main"}>
+              ₹{netBalance}
+            </Typography>
+          </Paper>
         </Grid>
       </Grid>
 
-      {/* Table */}
-      <Table sx={{ mt: 3 }}>
-        <TableHead>
-          <TableRow>
-            <TableCell>Category</TableCell>
-            <TableCell>Subcategory</TableCell>
-            <TableCell>Inflow (₹)</TableCell>
-            <TableCell>Outflow (₹)</TableCell>
-            <TableCell>Net (₹)</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {summaryData.map((row, idx) => (
-            <TableRow key={idx}>
-              <TableCell>{row.category}</TableCell>
-              <TableCell>{row.subcategory}</TableCell>
-              <TableCell>{row.inflow}</TableCell>
-              <TableCell>{row.outflow}</TableCell>
-              <TableCell>{row.net}</TableCell>
-            </TableRow>
+      {/* Filters */}
+      <Box sx={{ display: "flex", gap: 2, mb: 3 }}>
+        <TextField select label="Year" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)}>
+          {years.map((y) => <MenuItem key={y} value={y}>{y}</MenuItem>)}
+        </TextField>
+        <FormGroup row>
+          {months.map((m) => (
+            <FormControlLabel
+              key={m}
+              control={<Checkbox checked={selectedMonths.includes(m)} onChange={() => handleMonthToggle(m)} />}
+              label={m}
+            />
           ))}
-        </TableBody>
-      </Table>
-
-      {/* Actions */}
-      <Box sx={{ mt: 3 }}>
-        <Button variant="contained" color="primary" sx={{ mr: 2 }}>
-          Export Summary
-        </Button>
-        <Button variant="outlined">
-          Drill Down by Payee
-        </Button>
+        </FormGroup>
       </Box>
+
+      {/* Income Chart */}
+      <Typography variant="h6">Income by Category (%)</Typography>
+      <Box sx={{ height: 300 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={inflowChartData}
+            barCategoryGap="30%"   // space between categories
+            barGap={5}             // space between bars in same category
+           >
+            <XAxis dataKey="category" />
+            <YAxis unit="%" />
+            <Tooltip />
+            <Legend />
+            <Bar dataKey="percent" fill="#4caf50" barSize={40} onClick={(data) => setDrillCategory(data.category)} />
+          </BarChart>
+        </ResponsiveContainer>
+      </Box>
+
+      <Typography variant="h6" sx={{ mt: 3 }}>Expenses by Category (%)</Typography>
+      <Box sx={{ height: 300 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={outflowChartData}
+            barCategoryGap="30%"   // space between categories
+            barGap={5}
+          >// space between bars in same category>
+            <XAxis dataKey="category" />
+            <YAxis unit="%" />
+            <Tooltip />
+            <Legend />
+            <Bar dataKey="percent" fill="#f44336" barSize={40} onClick={(data) => setDrillCategory(data.category)} />
+          </BarChart>
+        </ResponsiveContainer>
+      </Box>
+
+      {/* Drill-down Subcategories */}
+      {drillCategory && (
+        <Box sx={{ mt: 3 }}>
+          <Typography variant="h6">Subcategories for {drillCategory}</Typography>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Subcategory</TableCell>
+                <TableCell>Month</TableCell>
+                <TableCell>Amount (₹)</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {drillSubcategories.map((t, idx) => (
+                <TableRow key={idx} onClick={() => setDrillSubcategory(t.subcategory)}>
+                  <TableCell>{t.subcategory}</TableCell>
+                  <TableCell>{t.month}</TableCell>
+                  <TableCell>{Math.abs(t.amount)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Box>
+      )}
+
+      {/* 🔹 Drill-down Table */}
+     {drillSubcategory && (
+       <Box sx={{ mt: 3 }}>
+         <Typography variant="h6" gutterBottom>
+           Transactions for {drillSubcategory}
+         </Typography>
+         <Table>
+           <TableHead>
+             <TableRow>
+               <TableCell>Category</TableCell>
+               <TableCell>Subcategory</TableCell>
+               <TableCell>Month</TableCell>
+               <TableCell>Amount (₹)</TableCell>
+               <TableCell>Type</TableCell>
+             </TableRow>
+           </TableHead>
+           <TableBody>
+             {transactions
+               .filter(
+                 (t) =>
+                   t.subcategory === drillSubcategory &&
+                   t.year === parseInt(selectedYear) &&
+                   selectedMonths.includes(t.month)
+               )
+               .map((t, idx) => (
+                 <TableRow key={idx}>
+                   <TableCell>{t.category}</TableCell>
+                   <TableCell>{t.subcategory}</TableCell>
+                   <TableCell>{t.month}</TableCell>
+                   <TableCell>{Math.abs(t.amount)}</TableCell>
+                   <TableCell>{t.txnType}</TableCell>
+                 </TableRow>
+               ))}
+           </TableBody>
+         </Table>
+
+         {/* Clear Drill‑Down Button */}
+         <Box sx={{ mt: 2 }}>
+           <Button
+             variant="outlined"
+             color="secondary"
+             onClick={() => setDrillSubcategory(null)}
+           >
+             Clear Drill‑Down
+           </Button>
+         </Box>
+       </Box>
+     )}
     </Card>
   );
 }
