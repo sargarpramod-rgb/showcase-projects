@@ -20,7 +20,7 @@ import InsertChartIcon from '@mui/icons-material/InsertChart'
 import { Chip } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-
+import GroupIcon from '@mui/icons-material/Group';
 
 // Custom Styled Tabs
 const CustomTabs = styled(Tabs)({
@@ -161,7 +161,7 @@ export default function MultiStepFormWithStyledTabs() {
        const txns = Array.isArray(item.transactions) ? item.transactions : [];
 
        const filteredTxns = showUncategorized
-         ? txns.filter(txn => !txn.category) // only uncategorized
+         ? txns.filter(txn => !txn.category || !txn.subcategory) // only uncategorized
          : txns;                             // all transactions
 
        return {
@@ -277,13 +277,7 @@ export default function MultiStepFormWithStyledTabs() {
                 showUncategorized={showUncategorized}
             />
 
-            {showUncategorized && (
-                    <UncategorizedView
-                      count={uncategorizedCount}
-                      transactions={uncategorizedTxList}
-                      onBulkApply={handleBulkApply}
-                    />
-                  )}
+
 
 
             <LoadingOverlay loading={loading} message="Uploading…" />
@@ -318,12 +312,20 @@ export default function MultiStepFormWithStyledTabs() {
 
             {aggregatedData.length > 0 && (
               <Box>
-                  <Typography variant="h6" gutterBottom>
-                    Edit Transactions
-                  </Typography>
+                 <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+                   {showUncategorized ? (
+                     <>
+                       <GroupIcon fontSize="small" sx={{ mr: 1 }} />
+                       Bulk Categorization
+                     </>
+                   ) : (
+                     'Edit Transactions'
+                   )}
+                 </Typography>
+
 
                   <Transactions
-                        filters={{ filterText, setFilterText }}
+                        filters={{ filterText, setFilterText,showUncategorized }}
                         transactionsData={{ aggregatedData, data, setData, smallTransactions }}
                         modalHandlers={{ setSelectedPayee, setOpenDialog }}
                    />

@@ -8,138 +8,81 @@ export default function CategorySelector({
   data,
   setData,
   payee,
-  smallTransactions
+  smallTransactions,
+  categories = [],                // default to empty array
+    categorySubcategories = {},    // default to empty object
+  showUncategorized
+
 }) {
-
-  const [categoryJson, setCategoryJson] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const [categories, setCategories] = useState([]);
-  const [categorySubcategories, setCategorySubcategories] = useState({});
-
-  // ====== Call API on mount ======
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const response = await fetch("http://localhost:8080/api/transaction-categories");
-        const json = await response.json();
-
-        setCategoryJson(json);
-
-        // Build categories array
-        setCategories(json.map((c) => c.categoryName));
-
-        // Build subcategory map
-        const subMap = {};
-          json.forEach((item) => {
-            subMap[item.categoryName] = item.subCategories;
-          });
-
-        setCategorySubcategories(subMap);
-        setLoading(false);
-      } catch (error) {
-        console.error("Failed to load categories:", error);
-        setLoading(false);
-      }
-    };
-
-    fetchCategories();
-  }, []);
-
-  // ====== Existing Handlers ======
   const handleCategoryChange = (event, payee) => {
     const selectedCategory = event.target.value;
-    setData((prevData) => {
+    setData(prevData => {
       const updatedData = { ...prevData };
-
-      Object.keys(updatedData).forEach((key) => {
+      Object.keys(updatedData).forEach(key => {
         const matchingTransactions = smallTransactions.some(
-          (txn) => txn.payee === key && payee === "Small Transactions"
+          txn => txn.payee === key && payee === "Small Transactions"
         );
+        updatedData[key] = updatedData[key].map(item => {
+          if (item.payee === payee || matchingTransactions) {
+            return {
+              ...item,
+              category: selectedCategory,
+              subcategory: showUncategorized
+                               ? "" // leave blank
+                               : (categorySubcategories[selectedCategory]?.[0] || "")
 
-        updatedData[key] = updatedData[key].map((item) =>
-          item.payee === payee || matchingTransactions
-            ? {
-                ...item,
-                category: selectedCategory,
-                subcategory:
-                  categorySubcategories[selectedCategory]?.[0] || ""
-              }
-            : item
-        );
+            };
+          }
+          return item;
+        });
       });
-
       return updatedData;
     });
   };
 
   const handleSubcategoryChange = (event, payee) => {
     const selectedSubcategory = event.target.value;
-
-    setData((prevData) => {
+    setData(prevData => {
       const updatedData = { ...prevData };
-
-      Object.keys(updatedData).forEach((key) => {
+      Object.keys(updatedData).forEach(key => {
         const matchingTransactions = smallTransactions.some(
-          (txn) => txn.payee === key
+          txn => txn.payee === key
         );
-
-        updatedData[key] = updatedData[key].map((item) =>
+        updatedData[key] = updatedData[key].map(item =>
           item.payee === payee || matchingTransactions
             ? { ...item, subcategory: selectedSubcategory }
             : item
         );
       });
-
       return updatedData;
     });
   };
 
-  // ===== Loading State =====
-  if (loading) {
-    return (
-      <FormControl size="small" sx={{ width: "100%" }}>
-        <CircularProgress size={20} />
-      </FormControl>
-    );
-  }
-
   return (
     <FormControl size="small" sx={{ width: "100%" }}>
-      {/* CATEGORY DROPDOWN */}
       {type === "category" && (
         <Select
           value={category || ""}
-          onChange={(e) => handleCategoryChange(e, payee)}
+          onChange={e => handleCategoryChange(e, payee)}
           displayEmpty
         >
-          <MenuItem value="" disabled>
-            Select Category
-          </MenuItem>
-          {categories.map((cat) => (
-            <MenuItem key={cat} value={cat}>
-              {cat}
-            </MenuItem>
+          <MenuItem value="" disabled>Select Category</MenuItem>
+          {categories.map(cat => (
+            <MenuItem key={cat} value={cat}>{cat}</MenuItem>
           ))}
         </Select>
       )}
 
-      {/* SUBCATEGORY DROPDOWN */}
       {type === "subcategory" && (
         <Select
           value={subcategory || ""}
-          onChange={(e) => handleSubcategoryChange(e, payee)}
+          onChange={e => handleSubcategoryChange(e, payee)}
           displayEmpty
           disabled={!category}
         >
-          <MenuItem value="" disabled>
-            Select Subcategory
-          </MenuItem>
-
-          {(categorySubcategories[category] || []).map((subcat) => (
-            <MenuItem key={subcat} value={subcat}>
-              {subcat}
-            </MenuItem>
+          <MenuItem value="" disabled>Select Subcategory</MenuItem>
+          {(categorySubcategories[category] || []).map(subcat => (
+            <MenuItem key={subcat} value={subcat}>{subcat}</MenuItem>
           ))}
         </Select>
       )}
