@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState,useEffect } from "react";
 import {
   Card, Typography, Box, Grid, TextField, MenuItem,
   Button, FormGroup, FormControlLabel, Checkbox, Paper,
@@ -8,7 +8,8 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
 
-export default function TransactionSummaryView() {
+export default function TransactionSummaryView({onLoadingChange}) {
+  const [rawTransactions, setRawTransactions] = useState("");
   const [selectedYear, setSelectedYear] = useState("2025");
   const [selectedMonths, setSelectedMonths] = useState([]);
   const [drillCategory, setDrillCategory] = useState(null);
@@ -18,15 +19,55 @@ export default function TransactionSummaryView() {
                   "July","August","September","October","November","December"];
   const years = ["2023","2024","2025"];
 
-  // TODO : Get the transactions
-  const transactions = [
-    { amount: -45000, category: "EMI", subcategory: "EMI", txnType: "Debit", month: "January", year: 2025 },
-    { amount: -5000, category: "Home Utilities", subcategory: "Repair", txnType: "Debit", month: "January", year: 2025 },
-    { amount: -500, category: "Home Utilities", subcategory: "Repair", txnType: "Debit", month: "February", year: 2025 },
-    { amount: 20000, category: "Salary", subcategory: "Monthly", txnType: "Credit", month: "January", year: 2025 },
-    { amount: 1000, category: "Interest", subcategory: "Monthly", txnType: "Credit", month: "January", year: 2025 },
-    { amount: 22000, category: "Salary", subcategory: "Monthly", txnType: "Credit", month: "February", year: 2025 },
+useEffect(() => {
+    const fetchTransactions = async () => {
+      try {
+        onLoadingChange(true);
+
+        const response = await fetch("http://localhost:8080/api/transactions-summary-by/2025");
+        const json = await response.json();
+
+        setRawTransactions(json);
+
+        onLoadingChange(false);
+      } catch (error) {
+        console.error("Failed to load transactions:", error);
+        onLoadingChange(false);
+      }
+    };
+    fetchTransactions();
+  }, [onLoadingChange]);
+// Utility to extract month name and year from date string
+const getMonthYear = (dateStr) => {
+  const d = new Date(dateStr);
+  const monthNames = [
+    "January","February","March","April","May","June",
+    "July","August","September","October","November","December"
   ];
+  return {
+    month: monthNames[d.getMonth()],
+    year: d.getFullYear()
+  };
+};
+
+
+// Example JSON transactions (replace with API or props)
+
+const transactions = Array.isArray(rawTransactions)
+  ? rawTransactions.map(t => {
+                              const { month, year } = getMonthYear(t.date);
+                              return { ...t, month, year };
+                            })
+  : [];
+
+  console.log("transactions ",transactions)
+
+ /* // Normalize transactions: add month/year fields
+    const transactions = rawTransactions.map(t => {
+      const { month, year } = getMonthYear(t.date);
+      return { ...t, month, year };
+    });*/
+
 
   const handleMonthToggle = (month) => {
     setSelectedMonths((prev) =>

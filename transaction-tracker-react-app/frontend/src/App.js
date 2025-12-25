@@ -355,7 +355,8 @@ export default function MultiStepFormWithStyledTabs() {
                 <Typography variant="h5" gutterBottom>
                   Past Transactions
                 </Typography>
-                <Typography variant="body1">Functionality to view past transactions will be implemented here.</Typography>
+                <TransactionSummaryView
+                    onLoadingChange={setLoading}/>
               </Card>
             )}
       </Box>
