@@ -4,9 +4,12 @@ import com.github.fracpete.quicken4j.Transactions;
 import com.transaction.model.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -53,15 +56,6 @@ public class TransactionService {
 
     @Transactional
     public void savePayeeCategoryMappings(List<PayeeCategoryResponse> mappings) {
-
-     /*   String sql = """
-        INSERT INTO payee_category_mapping
-        (payee_name, category_id, subcategory_id)
-        VALUES (?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-        category_id = VALUES(category_id),
-        subcategory_id = VALUES(subcategory_id)
-    """;*/
 
         String sql = """
                 MERGE INTO payee_category_mapping (payee_name, category_id, subcategory_id)
@@ -249,4 +243,34 @@ public class TransactionService {
     }
 
 
+    public List<EnhancedTransaction> getTransactionsByYear(int year) {
+
+       return jdbcTemplate.query(
+                "SELECT c.name AS category_name,\n" +
+                        "       sc.name AS subcategory_name,\n" +
+                        "       t.*\n" +
+                        "FROM transactions t\n" +
+                        "JOIN categories c\n" +
+                        "  ON t.category_id = c.id\n" +
+                        "JOIN subcategories sc\n" +
+                        "  ON t.category_id = sc.category_id\n" +
+                        " AND t.subcategory_id = sc.id\n" +
+                        "WHERE YEAR(t.txn_date) = ?;\n",
+                new Object[]{year},
+                (rs, rowNum) -> {
+
+                    EnhancedTransaction enhancedTransaction = new EnhancedTransaction();
+
+                    enhancedTransaction.setTransactionId(rs.getString("transaction_id"));
+                    enhancedTransaction.setDate(rs.getString("txn_date"));
+                    enhancedTransaction.setAmount(rs.getDouble("amount"));
+                    enhancedTransaction.setPayeeFullName(rs.getString("payee_full_name"));
+                    enhancedTransaction.setPayee(rs.getString("payee"));
+                    enhancedTransaction.setTxnType(rs.getString("txn_type"));
+                    enhancedTransaction.setCategory(rs.getString("category_name"));
+                    enhancedTransaction.setSubcategory(rs.getString("subcategory_name"));
+
+                    return enhancedTransaction;
+                });
+    }
 }
