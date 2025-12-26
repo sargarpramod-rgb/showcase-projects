@@ -79,12 +79,12 @@ const transactions = Array.isArray(rawTransactions)
     (t) => selectedMonths.includes(t.month) && t.year === parseInt(selectedYear)
   );
 
-  // 🔹 Split into inflows vs outflows
+  //  Split into inflows vs outflows
   const inflows = filtered.filter((t) => t.txnType === "Credit");
   const outflows = filtered.filter((t) => t.txnType === "Debit");
 
-  // 🔹 Aggregate by category
- // 🔹 Aggregate by category with normalization
+  //  Aggregate by category
+ //  Aggregate by category with normalization
  const aggregateByCategoryPercent = (data) => {
    // Step 1: aggregate raw totals
    const totals = data.reduce((acc, row) => {
@@ -107,26 +107,42 @@ const transactions = Array.isArray(rawTransactions)
    }));
  };
 
- // 🔹 Use for inflows and outflows separately
+ //  Use for inflows and outflows separately
  const inflowChartData = aggregateByCategoryPercent(inflows);
- const outflowChartData = aggregateByCategoryPercent(outflows);
 
-  // 🔹 Totals
-  const totalExpenses = outflows.reduce((sum, r) => sum + Math.abs(r.amount), 0);
-  const totalIncome = inflows.reduce((sum, r) => sum + Math.abs(r.amount), 0);
-  const netBalance = totalIncome - totalExpenses;
+
+ const investmentOutflows = outflows.filter(t => t.category === "Investments");
+ const expenseOutflows    = outflows.filter(t => t.category !== "Investments");
+
+ const totalInvestments = investmentOutflows.reduce((sum, r) => sum + Math.abs(r.amount), 0);
+ const totalExpenses    = expenseOutflows.reduce((sum, r) => sum + Math.abs(r.amount), 0);
+  const totalIncome   = inflows.reduce((sum, r) => sum + Math.abs(r.amount), 0);
+  const netBalance    = totalIncome - (totalExpenses + totalInvestments);
+
+const expenseChartData = aggregateByCategoryPercent(expenseOutflows);
 
   const colors = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b"];
 
-  // 🔹 Drill-down subcategories
+  //  Drill-down subcategories
   const drillSubcategories = drillCategory
     ? filtered.filter((t) => t.category === drillCategory)
     : [];
 
-  // 🔹 Drill-down transactions
+  //  Drill-down transactions
   const drillTransactions = drillSubcategory
     ? filtered.filter((t) => t.subcategory === drillSubcategory)
     : [];
+
+  const formatIndianNumber = (num) => {
+    return new Intl.NumberFormat("en-IN", {
+      maximumFractionDigits: 0
+    }).format(num);
+  };
+
+// Percentages relative to income
+const investmentPercent = totalIncome > 0 ? ((totalInvestments / totalIncome) * 100).toFixed(1) : 0;
+const expensePercent    = totalIncome > 0 ? ((totalExpenses / totalIncome) * 100).toFixed(1) : 0;
+const netBalancePercent = totalIncome > 0 ? ((netBalance / totalIncome) * 100).toFixed(1) : 0;
 
   return (
     <Card sx={{ p: 3, boxShadow: 3 }}>
@@ -134,23 +150,29 @@ const transactions = Array.isArray(rawTransactions)
 
       {/* Summary Cards */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={4}>
-          <Paper sx={{ p: 2, bgcolor: "#ffebee" }}>
-            <Typography color="error" variant="h6">Expenses</Typography>
-            <Typography variant="h5">₹{totalExpenses}</Typography>
+        <Grid item xs={3}>
+                  <Paper sx={{ p: 2, bgcolor: "#e8f5e9" }}>
+                    <Typography color="success.main" variant="h6">Income</Typography>
+                    <Typography variant="h5">₹{formatIndianNumber(totalIncome)} (100%) </Typography>
+                  </Paper>
+                </Grid>
+        <Grid item xs={3}>
+          <Paper sx={{ p: 2, bgcolor: "#fff3e0" }}>
+            <Typography color="warning.main" variant="h6">Investments</Typography>
+            <Typography variant="h5">₹{formatIndianNumber(totalInvestments)} ({investmentPercent}%)</Typography>
           </Paper>
         </Grid>
-        <Grid item xs={4}>
-          <Paper sx={{ p: 2, bgcolor: "#e8f5e9" }}>
-            <Typography color="success.main" variant="h6">Income</Typography>
-            <Typography variant="h5">₹{totalIncome}</Typography>
-          </Paper>
+        <Grid item xs={3}>
+                  <Paper sx={{ p: 2, bgcolor: "#ffebee" }}>
+                    <Typography color="error" variant="h6">Expenses</Typography>
+                    <Typography variant="h5">₹{formatIndianNumber(totalExpenses)} ({expensePercent}%)</Typography>
+                  </Paper>
         </Grid>
-        <Grid item xs={4}>
+        <Grid item xs={3}>
           <Paper sx={{ p: 2, bgcolor: "#e3f2fd" }}>
             <Typography variant="h6">Net Balance</Typography>
             <Typography variant="h5" color={netBalance < 0 ? "error" : "success.main"}>
-              ₹{netBalance}
+              ₹{formatIndianNumber(netBalance)} ({netBalancePercent}%)
             </Typography>
           </Paper>
         </Grid>
@@ -192,7 +214,7 @@ const transactions = Array.isArray(rawTransactions)
       <Typography variant="h6" sx={{ mt: 3 }}>Expenses by Category (%)</Typography>
       <Box sx={{ height: 300 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={outflowChartData}
+          <BarChart data={expenseChartData}
             barCategoryGap="30%"   // space between categories
             barGap={5}
           >// space between bars in same category>
@@ -230,7 +252,7 @@ const transactions = Array.isArray(rawTransactions)
         </Box>
       )}
 
-      {/* 🔹 Drill-down Table */}
+      {/*  Drill-down Table */}
      {drillSubcategory && (
        <Box sx={{ mt: 3 }}>
          <Typography variant="h6" gutterBottom>

@@ -188,6 +188,39 @@ export default function MultiStepFormWithStyledTabs() {
       };
     console.log("aggregatedData"+JSON.stringify(aggregatedData, null, 2))
 
+// Utility: convert date string → "Month-Year"
+const formatMonthYear = (dateStr) => {
+  // Take only the dd-mm-yyyy part
+  const rawDate = dateStr.split(" ")[0]; // "09-10-2025"
+  const [month, day, year] = rawDate.split("-");
+  const jsDate = new Date(`${year}-${month}-${day}`);
+
+  const monthNames = [
+    "January","February","March","April","May","June",
+    "July","August","September","October","November","December"
+  ];
+
+  return `${monthNames[jsDate.getMonth()]}-${jsDate.getFullYear()}`;
+};
+
+// Loop through outer array + inner transactions
+const uniqueMonthYears = [
+  ...new Set(
+    aggregatedData.flatMap(item =>
+      Array.isArray(item.transactions)
+        ? item.transactions.map(txn => formatMonthYear(txn.date))
+        : []
+    )
+  )
+];
+
+console.log("monthYearStrings=",uniqueMonthYears);
+
+const periodLabel = uniqueMonthYears.length > 0
+  ? uniqueMonthYears.join(", ")
+  : "Selected Period";
+
+
   const handleOpenChartDialog = () => {
     console.log("Opening chart dialog"); // Debugging
     setOpenChartDialog(true);
@@ -319,7 +352,7 @@ export default function MultiStepFormWithStyledTabs() {
                        Bulk Categorization
                      </>
                    ) : (
-                     'Edit Transactions'
+                     <>Edit Transactions for {periodLabel}</>
                    )}
                  </Typography>
 

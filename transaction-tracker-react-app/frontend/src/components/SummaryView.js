@@ -18,8 +18,13 @@ export default function SummaryView({aggregatedData,onUncategorizedClick,showUnc
 // use only transaction which are categorized, so when user updates category amount gets updated dynmaically.
 const summary = {
      expenses: aggregatedData
-                      .flatMap(item => item.transactions.filter(txn => txn.category && txn.amount < 0))
+                      .flatMap(item => item.transactions.filter(txn => txn.category && txn.category != 'Investments'
+                      && txn.amount < 0))
                       .reduce((acc, txn) => acc + txn.amount, 0),
+     // hard-coding of investments can cause issue for maintenance.
+     investments: aggregatedData
+          .flatMap(item => item.transactions.filter(txn => txn.category && txn.category =='Investments'))
+          .reduce((acc, txn) => acc + txn.amount, 0),
      income: aggregatedData
        .flatMap(item => item.transactions.filter(txn => txn.category && txn.amount > 0))
        .reduce((acc, txn) => acc + txn.amount, 0),
@@ -29,7 +34,7 @@ const summary = {
    };
 
 
-    const netBalance = summary.income - Math.abs(summary.expenses);
+    const netBalance = summary.income - Math.abs(summary.investments + summary.expenses);
     console.log("summary"+JSON.stringify(summary, null, 2))
 
 return (
@@ -38,18 +43,25 @@ return (
 
 
                         <Chip
-                          label={`Expenses: ₹${Math.abs(Math.round(summary.expenses))}`}
-                          color="error"
-                        />
-
-                        <Chip
                           label={`Income: ₹${Math.round(summary.income)}`}
                           color="success"
                         />
 
                         <Chip
+                             label={`Investments: ₹${Math.round(summary.investments)}`}
+                             color="success"
+                           />
+
+                        <Chip
+                          label={`Expenses: ₹${Math.abs(Math.round(summary.expenses))}`}
+                          color="error"
+                        />
+
+
+
+                        <Chip
                           icon={netBalance < 0 ? <WarningIcon /> : <CheckCircleIcon />}
-                          label={`Net Balance: ₹${netBalance.toLocaleString()}`}
+                          label={`Net Balance: ₹₹${Math.abs(Math.round(netBalance))}`}
                           color={netBalance < 0 ? "error" : "success"}
                           variant="outlined"
                         />
