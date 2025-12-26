@@ -67,6 +67,7 @@ public class TransactionController {
     @PostMapping("/save-transactions")
     public ResponseEntity<String> saveTransactions(@RequestBody List<AggregatedTransactions> aggregatedTransactions) {
 
+        //TODO : Observation, in case transaction id is all 0000 it is not getting saved, need to randomize in that case.
         logger.info("aggregatedTransactions " + aggregatedTransactions);
 
         // 1. Save Payee to category, sub-category information.
