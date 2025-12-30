@@ -63,6 +63,7 @@ export default function MultiStepFormWithStyledTabs() {
     const [saving, setSaving] = useState(false);
     const [showSummary, setShowSummary] = useState(false);
     const [showUncategorized, setShowUncategorized] = useState(false);
+    const [showIncome, setShowIncome] = useState(false);
 
 
   const handleChange = (id, key, value) => {
@@ -162,7 +163,7 @@ export default function MultiStepFormWithStyledTabs() {
 
        const filteredTxns = showUncategorized
          ? txns.filter(txn => !txn.category || !txn.subcategory) // only uncategorized
-         : txns;                             // all transactions
+         : showIncome ? txns.filter(txn => txn.amount > 0) : txns;                             // all transactions
 
        return {
          ...item,
@@ -308,6 +309,9 @@ const periodLabel = uniqueMonthYears.length > 0
                 aggregatedData={aggregatedData}
                 onUncategorizedClick={() => setShowUncategorized(prev => !prev)}
                 showUncategorized={showUncategorized}
+                onIncomeClick={() => setShowIncome(prev => !prev)}
+                showIncome={showIncome}
+
             />
 
 

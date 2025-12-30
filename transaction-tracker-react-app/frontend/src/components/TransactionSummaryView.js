@@ -123,10 +123,35 @@ const expenseChartData = aggregateByCategoryPercent(expenseOutflows);
 
   const colors = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b"];
 
-  //  Drill-down subcategories
+    console.log("drillCategory",drillCategory)
   const drillSubcategories = drillCategory
     ? filtered.filter((t) => t.category === drillCategory)
     : [];
+
+  // Summarize by month + subcategory
+  const drillSummary = drillSubcategories.reduce((acc, txn) => {
+    if (!txn || txn.amount == null) return acc; // null-safe guard
+
+    const key = `${txn.year}-${txn.month}-${txn.subcategory}`;
+
+    if (!acc[key]) {
+      acc[key] = {
+        month: txn.month,
+        year: txn.year,
+        subcategory: txn.subcategory,
+        totalAmount: 0
+      };
+    }
+
+    acc[key].totalAmount += txn.amount;
+    return acc;
+  }, {});
+
+  // Convert to array for charts/tables
+  const drillResult = Object.values(drillSummary);
+
+  console.log(drillResult);
+
 
   //  Drill-down transactions
   const drillTransactions = drillSubcategory
@@ -240,11 +265,11 @@ const netBalancePercent = totalIncome > 0 ? ((netBalance / totalIncome) * 100).t
               </TableRow>
             </TableHead>
             <TableBody>
-              {drillSubcategories.map((t, idx) => (
+              {drillResult.map((t, idx) => (
                 <TableRow key={idx} onClick={() => setDrillSubcategory(t.subcategory)}>
                   <TableCell>{t.subcategory}</TableCell>
                   <TableCell>{t.month}</TableCell>
-                  <TableCell>{Math.abs(t.amount)}</TableCell>
+                  <TableCell>{Math.abs(t.totalAmount)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

@@ -13,7 +13,9 @@ import { Chip } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
-export default function SummaryView({aggregatedData,onUncategorizedClick,showUncategorized}) {
+export default function SummaryView({aggregatedData,
+onUncategorizedClick,showUncategorized,
+onIncomeClick,showIncome}) {
 
 // use only transaction which are categorized, so when user updates category amount gets updated dynmaically.
 const summary = {
@@ -43,8 +45,12 @@ return (
 
 
                         <Chip
-                          label={`Income: ₹${Math.round(summary.income)}`}
+                         label={showIncome ? "Clear":`Income: ₹${Math.round(summary.income)}`}
+
                           color="success"
+                            clickable
+                            onClick={onIncomeClick}
+
                         />
 
                         <Chip
