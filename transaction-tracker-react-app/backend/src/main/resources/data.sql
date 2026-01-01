@@ -78,3 +78,19 @@ VALUES ('AMAZON', 9, 3);
 
 INSERT INTO payee_category_mapping (payee_name, category_id, subcategory_id)
 VALUES ('RASECC THANE', 2, 1);
+
+// important queries
+-- investment
+SELECT *
+FROM transactions
+WHERE MONTH(txn_date) = 10
+  AND YEAR(txn_date) = 2025
+  and category_id=3;
+
+-- Income
+
+SELECT *
+FROM transactions
+WHERE MONTH(txn_date) = 10
+  AND YEAR(txn_date) = 2025
+  and category_id=10;

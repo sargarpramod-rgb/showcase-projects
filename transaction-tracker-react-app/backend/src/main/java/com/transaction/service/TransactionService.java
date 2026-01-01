@@ -14,6 +14,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -128,10 +129,22 @@ public class TransactionService {
 
                     // Remove "TXN TIME " and get only the date part
                     String datePart = dateString.split(" TXN TIME ")[0];
-                    // Define formatter
-                    DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("MM-dd-yyyy");
-                    // Parse to LocalDate
-                    LocalDate localDate = LocalDate.parse(datePart, dateFormatter);
+                    LocalDate localDate = null;
+                    // Define possible formatters
+                    List<DateTimeFormatter> formatters = Arrays.asList(
+                            DateTimeFormatter.ofPattern("MM-dd-yyyy"), // e.g. 07-01-2025
+                            DateTimeFormatter.ofPattern("dd/MM/yy")    // e.g. 01/06/25
+                    );
+
+                    for (DateTimeFormatter formatter : formatters) {
+                        try {
+                            localDate = LocalDate.parse(datePart, formatter);
+                        } catch (DateTimeParseException e) {
+                            // try next formatter
+                        }
+                    }
+
+
 
                     return new Object[]{
                             txn.getTransactionId(),
