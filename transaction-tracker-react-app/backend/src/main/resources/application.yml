@@ -5,15 +5,21 @@ spring:
       path: /h2-console
 
   datasource:
-    url: jdbc:h2:file:/data/h2/app-db
+    url: jdbc:h2:file:/data1/h2/app-db
     driver-class-name: org.h2.Driver
     username: sa
     password:
 
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      data-locations: classpath:data.sql
+
   jpa:
     database-platform: org.hibernate.dialect.H2Dialect
     hibernate:
-      ddl-auto: update
+      ddl-auto: none
     show-sql: true
 
   web:
