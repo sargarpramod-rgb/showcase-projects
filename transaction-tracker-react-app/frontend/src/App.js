@@ -77,7 +77,7 @@ export default function MultiStepFormWithStyledTabs() {
 
     setSaving(true)
     try {
-            const response = await fetch("${API_BASE}/api/save-transactions", {
+            const response = await fetch(`${config.API_BASE}/api/save-transactions`, {
               method: "POST",
                headers: {
                       'Content-Type': 'application/json',
