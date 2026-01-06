@@ -5,6 +5,7 @@ import { Tooltip as MuiTooltip,AppBar, Tabs, Tab, Box, Typography, Button, Table
     MenuItem, Select, FormControl} from "@mui/material";
 import {TablePagination} from "@mui/material";
 import ClearIcon from "@mui/icons-material/Clear"; // Import Clear Icon
+import config from "../config";
 
 export default function Transactions({ filters, transactionsData, modalHandlers }) {
 
@@ -20,11 +21,13 @@ const [categories, setCategories] = useState([]);
   const [categorySubcategories, setCategorySubcategories] = useState({});
  const [categoryJson, setCategoryJson] = useState([]);
   const [loading, setLoading] = useState(true);
+
+
   // ====== Call API on mount ======
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const response = await fetch("http://localhost:8080/api/transaction-categories");
+        const response = await fetch(`${config.API_BASE}/api/transaction-categories`);
         const json = await response.json();
 
         setCategoryJson(json);

@@ -8,6 +8,7 @@ import {
   Treemap ,BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,LabelList,
   PieChart, Pie, Cell
 } from "recharts";
+import config from "../config";
 
 export default function TransactionSummaryView({onLoadingChange}) {
   const [rawTransactions, setRawTransactions] = useState("");
@@ -26,7 +27,7 @@ useEffect(() => {
       try {
         onLoadingChange(true);
 
-        const response = await fetch("http://localhost:8080/api/transactions-summary-by/2025");
+        const response = await fetch(`${config.API_BASE}/api/transactions-summary-by/2025`);
         const json = await response.json();
 
         setRawTransactions(json);

@@ -13,6 +13,7 @@ import { Chip } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SummaryView from "./SummaryView"
+import config from "../config";
 
 export default function UploadView({onFileChange, onLoadingChange,
 onDataChange,handleOpenChartDialog,aggregatedData,
@@ -32,7 +33,7 @@ const handleFileUpload = async (event) => {
       formData.append("file", uploadedFile);
 
       try {
-        const response = await fetch("http://localhost:8080/api/upload-transaction-file", {
+        const response = await fetch(`${config.API_BASE}/api/upload-transaction-file`, {
           method: "POST",
           body: formData,
         });

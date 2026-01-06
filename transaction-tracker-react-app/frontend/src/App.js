@@ -15,12 +15,15 @@ import LoadingOverlay from "./components/LoadingOverlay";
 import UncategorizedView from "./components/UncategorizedView"
 import TransactionSummaryView from "./components/TransactionSummaryView"
 import UploadView from "./components/UploadView"
+import SampleTransactionsDownloader from "./components/SampleTransactionsDownloader"
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import InsertChartIcon from '@mui/icons-material/InsertChart'
 import { Chip } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import GroupIcon from '@mui/icons-material/Group';
+import config from './/config';
+
 
 // Custom Styled Tabs
 const CustomTabs = styled(Tabs)({
@@ -74,7 +77,7 @@ export default function MultiStepFormWithStyledTabs() {
 
     setSaving(true)
     try {
-            const response = await fetch("http://localhost:8080/api/save-transactions", {
+            const response = await fetch("${API_BASE}/api/save-transactions", {
               method: "POST",
                headers: {
                       'Content-Type': 'application/json',
@@ -296,6 +299,9 @@ const periodLabel = uniqueMonthYears.length > 0
           <ListItem button onClick={() => setSelectedOption("view")}>
             <ListItemText primary="View Past Transactions" />
           </ListItem>
+          <ListItem button onClick={() => setSelectedOption("samples")}>
+            <ListItemText primary="Sample Transactions" />
+          </ListItem>
         </List>
       </Drawer>
         <Box sx={{ flexGrow: 1, p: 3 }}>
@@ -396,6 +402,10 @@ const periodLabel = uniqueMonthYears.length > 0
                     onLoadingChange={setLoading}/>
               </Card>
             )}
+
+            {selectedOption === "samples" && (
+               <SampleTransactionsDownloader/>
+             )}
       </Box>
     </Box>
     )}
