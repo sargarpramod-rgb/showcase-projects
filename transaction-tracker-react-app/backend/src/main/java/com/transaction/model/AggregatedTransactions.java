@@ -1,7 +1,11 @@
 package com.transaction.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Data;
+
 import java.util.List;
 
+@Data
 public class AggregatedTransactions {
 
     String payee;
@@ -9,54 +13,6 @@ public class AggregatedTransactions {
     int transactionCount;
     String category;
     String subcategory;
-
+    @JsonProperty("transactions")
     List<EnhancedTransaction> enhancedTransactionList;
-
-    public String getPayee() {
-        return payee;
-    }
-
-    public void setPayee(String payee) {
-        this.payee = payee;
-    }
-
-    public Double getTotalAmount() {
-        return totalAmount;
-    }
-
-    public void setTotalAmount(Double totalAmount) {
-        this.totalAmount = totalAmount;
-    }
-
-    public int getTransactionCount() {
-        return transactionCount;
-    }
-
-    public void setTransactionCount(int transactionCount) {
-        this.transactionCount = transactionCount;
-    }
-
-    public String getCategory() {
-        return category;
-    }
-
-    public void setCategory(String category) {
-        this.category = category;
-    }
-
-    public String getSubcategory() {
-        return subcategory;
-    }
-
-    public void setSubcategory(String subcategory) {
-        this.subcategory = subcategory;
-    }
-
-    public List<EnhancedTransaction> getEnhancedTransactionList() {
-        return enhancedTransactionList;
-    }
-
-    public void setEnhancedTransactionList(List<EnhancedTransaction> enhancedTransactionList) {
-        this.enhancedTransactionList = enhancedTransactionList;
-    }
-}
+ }

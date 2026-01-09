@@ -14,7 +14,7 @@
 	<name>transaction-tracker-backend</name>
 	<description>Spring Boot project to help with tracking transactions</description>
 	<properties>
-		<java.version>23</java.version>
+		<java.version>21</java.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -38,6 +38,32 @@
 			<artifactId>quicken4j</artifactId>
 			<version>0.0.3</version>
 		</dependency>
+		<!-- This starter is crucial for basic Spring JDBC operations -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-jdbc</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<version>1.18.30</version>
+			<scope>provided</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-lang3</artifactId>
+			<version>3.17.0</version>
+		</dependency>
+
+
 	</dependencies>
 
 	<build>

@@ -93,3 +93,5 @@ A simple web application to help users upload, categorize, and visualize their f
 
    App will now serve the React frontend directly from the backend.
 
+4 **In Order to view h2 console**
+   http://localhost:8080/h2-console

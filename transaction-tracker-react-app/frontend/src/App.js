@@ -11,6 +11,19 @@ import SaveIcon from "@mui/icons-material/Save";
 import Transactions from "./components/Transactions";
 import PayeeTransactionsDialog from "./components/PayeeTransactionsDialog";
 import CategoryBreakdownDialog from "./components/CategoryBreakdownDialog";
+import LoadingOverlay from "./components/LoadingOverlay";
+import UncategorizedView from "./components/UncategorizedView"
+import TransactionSummaryView from "./components/TransactionSummaryView"
+import UploadView from "./components/UploadView"
+import SampleTransactionsDownloader from "./components/SampleTransactionsDownloader"
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import InsertChartIcon from '@mui/icons-material/InsertChart'
+import { Chip } from '@mui/material';
+import WarningIcon from '@mui/icons-material/Warning';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import GroupIcon from '@mui/icons-material/Group';
+import config from './/config';
+
 
 // Custom Styled Tabs
 const CustomTabs = styled(Tabs)({
@@ -49,33 +62,12 @@ export default function MultiStepFormWithStyledTabs() {
     const [selectedPayee, setSelectedPayee] = useState(null);
     const [openDialog, setOpenDialog] = useState(false);
     const [selectedOption, setSelectedOption] = useState("upload");
+    const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [showSummary, setShowSummary] = useState(false);
+    const [showUncategorized, setShowUncategorized] = useState(false);
+    const [showIncome, setShowIncome] = useState(false);
 
-  const handleFileUpload = async (event) => {
-    const uploadedFile = event.target.files[0];
-    setFile(uploadedFile);
-
-    if (uploadedFile) {
-      const formData = new FormData();
-      formData.append("file", uploadedFile);
-
-      try {
-        const response = await fetch("http://localhost:8080/api/upload-transaction-file", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!response.ok) {
-          throw new Error("File upload failed");
-        }
-
-        const result = await response.json();
-        setData(result)
-        console.log("File uploaded successfully:", result);
-      } catch (error) {
-        console.error("Error uploading file:", error);
-      }
-    }
-  };
 
   const handleChange = (id, key, value) => {
     setData(data.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
@@ -83,8 +75,9 @@ export default function MultiStepFormWithStyledTabs() {
 
   const handleSave = async (event) => {
 
+    setSaving(true)
     try {
-            const response = await fetch("http://localhost:8080/api/save-transactions", {
+            const response = await fetch(`${config.API_BASE}/api/save-transactions`, {
               method: "POST",
                headers: {
                       'Content-Type': 'application/json',
@@ -101,6 +94,8 @@ export default function MultiStepFormWithStyledTabs() {
             setIsSaved(true);
           } catch (error) {
             console.error("Error saving the data:", error);
+          } finally {
+             setSaving(false);
           }
   };
 
@@ -157,14 +152,78 @@ export default function MultiStepFormWithStyledTabs() {
       });
     }
 
-    aggregatedData = aggregatedData.filter(txn => !isPayeeSet || txn.payee?.trim().toLowerCase().includes(normalizedFilterPayee))
-                            .filter(txn => !isCategorySet || (txn.category?.trim().toLowerCase().includes(normalizedFilterCategory)
-                                                     && txn.category !== "undefined"))
-                             .filter(txn => !isSubCategorySet || (txn.subcategory?.trim().toLowerCase().includes(normalizedFilterSubCategory)
-                                                                              && txn.subcategory !== "undefined"))
+ console.log("original aggregatedData"+JSON.stringify(aggregatedData, null, 2))
+
+   aggregatedData = aggregatedData
+     .filter(item => !isPayeeSet || item.payee?.trim().toLowerCase().includes(normalizedFilterPayee))
+     .filter(item => !isCategorySet || (item.category?.trim().toLowerCase().includes(normalizedFilterCategory)
+                                        && item.category !== "undefined"))
+     .filter(item => !isSubCategorySet || (item.subcategory?.trim().toLowerCase().includes(normalizedFilterSubCategory)
+                                           && item.subcategory !== "undefined"))
+     .map(item => {
+       // safeguard for missing transactions
+       const txns = Array.isArray(item.transactions) ? item.transactions : [];
+
+       const filteredTxns = showUncategorized
+         ? txns.filter(txn => !txn.category || !txn.subcategory) // only uncategorized
+         : showIncome ? txns.filter(txn => txn.amount > 0) : txns;                             // all transactions
+
+       return {
+         ...item,
+         transactions: filteredTxns,
+         transactionCount: filteredTxns.length,
+         totalAmount: filteredTxns.reduce((sum, txn) => sum + txn.amount, 0)
+       };
+     })
+     // remove items that end up with no transactions
+     .filter(item => item.transactions.length > 0);
 
 
+    // compute uncategorized transactions at App level
+      const uncategorizedTxList = aggregatedData
+        .flatMap(item => item.transactions.filter(txn => !txn.category));
+
+      const uncategorizedCount = uncategorizedTxList.length;
+
+      const handleBulkApply = (selectedIds, category, subCategory) => {
+        // update logic here
+        console.log("Bulk apply:", selectedIds, category, subCategory);
+        setShowUncategorized(false); // optionally hide after apply
+      };
     console.log("aggregatedData"+JSON.stringify(aggregatedData, null, 2))
+
+// Utility: convert date string → "Month-Year"
+const formatMonthYear = (dateStr) => {
+  // Take only the dd-mm-yyyy part
+  const rawDate = dateStr.split(" ")[0]; // "09-10-2025"
+  const [month, day, year] = rawDate.split("-");
+  const jsDate = new Date(`${year}-${month}-${day}`);
+
+  const monthNames = [
+    "January","February","March","April","May","June",
+    "July","August","September","October","November","December"
+  ];
+
+  return `${monthNames[jsDate.getMonth()]}-${jsDate.getFullYear()}`;
+};
+
+// Loop through outer array + inner transactions
+const uniqueMonthYears = [
+  ...new Set(
+    aggregatedData.flatMap(item =>
+      Array.isArray(item.transactions)
+        ? item.transactions.map(txn => formatMonthYear(txn.date))
+        : []
+    )
+  )
+];
+
+console.log("monthYearStrings=",uniqueMonthYears);
+
+const periodLabel = uniqueMonthYears.length > 0
+  ? uniqueMonthYears.join(", ")
+  : "Selected Period";
+
 
   const handleOpenChartDialog = () => {
     console.log("Opening chart dialog"); // Debugging
@@ -219,6 +278,17 @@ export default function MultiStepFormWithStyledTabs() {
 
 
   return (
+    <>
+
+    {showSummary && (
+      <TransactionSummaryView
+        summaryData={aggregatedData}
+        inflowChartData={''}
+        outflowChartData={''}
+      />
+    )}
+
+ {!showSummary && (
     <Box sx={{ display: "flex", height: "100vh", backgroundColor: "#f4f6f8" }}>
       {/* Custom Styled Tabs */}
       <Drawer variant="permanent" anchor="left" sx={{ width: 240, flexShrink: 0, "& .MuiDrawer-paper": { width: 240, boxSizing: "border-box" }}}>
@@ -229,33 +299,76 @@ export default function MultiStepFormWithStyledTabs() {
           <ListItem button onClick={() => setSelectedOption("view")}>
             <ListItemText primary="View Past Transactions" />
           </ListItem>
+          <ListItem button onClick={() => setSelectedOption("samples")}>
+            <ListItemText primary="Sample Transactions" />
+          </ListItem>
         </List>
       </Drawer>
         <Box sx={{ flexGrow: 1, p: 3 }}>
             {selectedOption === "upload" && (
               <Card sx={{ p: 3, boxShadow: 3 }}>
-                <Typography variant="h5" gutterBottom>
-                  Upload Transactions
-                </Typography>
-                <Button variant="contained" component="label" startIcon={<CloudUploadIcon />} sx={{ mb: 2 }}>
-                  Upload File
-                  <input type="file" hidden onChange={handleFileUpload} />
-                </Button>
+            <UploadView
+                onFileChange={setFile}
+                onLoadingChange={setLoading}
+                onDataChange={setData}
+                handleOpenChartDialog={handleOpenChartDialog}
+                aggregatedData={aggregatedData}
+                onUncategorizedClick={() => setShowUncategorized(prev => !prev)}
+                showUncategorized={showUncategorized}
+                onIncomeClick={() => setShowIncome(prev => !prev)}
+                showIncome={showIncome}
+
+            />
+
+
+
+
+            <LoadingOverlay loading={loading} message="Uploading…" />
+            <LoadingOverlay loading={saving} message="Saving Transactions…" />
+
+            <Dialog open={isSaved} onClose={() => setIsSaved(false)}>
+                    <DialogTitle>Success</DialogTitle>
+                    <DialogContent>
+                      <Typography>Transactions saved successfully!</Typography>
+                    </DialogContent>
+                    <DialogActions>
+                      <Button
+                        onClick={() => {
+                          setShowSummary(true);
+                          setIsSaved(false); // close dialog
+                        }}
+                        color="primary"
+                      >
+                        View Summary
+                      </Button>
+                    </DialogActions>
+                  </Dialog>
+
+
+            {showSummary && (
+              <TransactionSummaryView
+                summaryData={aggregatedData} // pass your processed summary data
+                inflowChartData={''}
+                outflowChartData={''}
+              />
+            )}
 
             {aggregatedData.length > 0 && (
               <Box>
-                  <Typography variant="h6" gutterBottom>
-                    Edit Transactions
-                  </Typography>
-                    <Grid container spacing={2} alignItems="center" justifyContent="space-between">
-                        <Grid item xs={12} sm={6} textAlign="right">
-                          <Button variant="contained" color="secondary" onClick={handleOpenChartDialog}>
-                            Show Pie Chart
-                          </Button>
-                        </Grid>
-                      </Grid>
+                 <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+                   {showUncategorized ? (
+                     <>
+                       <GroupIcon fontSize="small" sx={{ mr: 1 }} />
+                       Bulk Categorization
+                     </>
+                   ) : (
+                     <>Edit Transactions for {periodLabel}</>
+                   )}
+                 </Typography>
+
+
                   <Transactions
-                        filters={{ filterText, setFilterText }}
+                        filters={{ filterText, setFilterText,showUncategorized }}
                         transactionsData={{ aggregatedData, data, setData, smallTransactions }}
                         modalHandlers={{ setSelectedPayee, setOpenDialog }}
                    />
@@ -285,10 +398,17 @@ export default function MultiStepFormWithStyledTabs() {
                 <Typography variant="h5" gutterBottom>
                   Past Transactions
                 </Typography>
-                <Typography variant="body1">Functionality to view past transactions will be implemented here.</Typography>
+                <TransactionSummaryView
+                    onLoadingChange={setLoading}/>
               </Card>
             )}
+
+            {selectedOption === "samples" && (
+               <SampleTransactionsDownloader/>
+             )}
       </Box>
     </Box>
-  );
-}
+    )}
+    </>
+  )
+};

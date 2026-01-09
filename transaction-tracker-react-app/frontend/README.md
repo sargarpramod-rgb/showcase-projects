@@ -144,6 +144,24 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/t
 ### Good to Have
     --> Ability to exclude certain transactions from report. (ADhoc Investementss, Self Transfer etc).
 
+### Observations (selecting category)
+    --> Single Payee can be given money for different purpose
+        i.e. Money given to Wife as Monthly pocket money And
+             sometimes as part of transport , hence being able to
+             select category at individual transaction level matters.
+
+    --> New Category/subcategory needed for below:
+        a) Mutton - Food , Egg/Mutton
+        b) ironing guy - for now, service
+        c) Expenses on toy - 
+        d) Baby products specifically from Firstcry.
+        e) expenses on village travel
+        f) category for credits
+            a) salary
+            b) dividends from stocks
+            c) other incomes
+            d) FD Sweeps
+        
 
 {
 "payee": "Small Transactions",
@@ -169,3 +187,5 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/t
 },
 
 this extra Payee is problem
+
+Observations
