@@ -33,8 +33,13 @@ const handleFileUpload = async (event) => {
       formData.append("file", uploadedFile);
 
       try {
+        const jwt = localStorage.getItem("jwt");
+
         const response = await fetch(`${config.API_BASE}/api/upload-transaction-file`, {
           method: "POST",
+          headers: {
+                                'Authorization': `Bearer ${jwt}`
+                            },
           body: formData,
         });
 
