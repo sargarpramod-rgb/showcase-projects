@@ -1,14 +1,26 @@
 spring:
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${CLIENT_ID}
+            client-secret: ${CLIENT_SECRET}
+            scope:
+              - email
+              - profile
+            redirect-uri: http://localhost:8080/login/oauth2/code/google
 
   datasource:
     url: jdbc:h2:file:/data1/h2/app-db
     driver-class-name: org.h2.Driver
     username: sa
     password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
 
   sql:
     init:
@@ -26,10 +38,17 @@ spring:
     resources:
       add-mappings: true
 
+app:
+  jwt:
+    secret: ${APP_SECRET}
+  crypto:
+    master-key: ${CRYPTO_MASTER_KEY}
+
 server:
   port: 8080
 
 logging:
   level:
-    org.springframework.jdbc.core: DEBUG
-    org.springframework.jdbc.datasource.init.ScriptUtils: DEBUG
+    org:
+      springframework:
+        security=DEBUG:
