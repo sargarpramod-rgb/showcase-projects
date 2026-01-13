@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import React, { useEffect,useState  } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
@@ -9,11 +9,11 @@ const LoginSuccess = () => {
 
   useEffect(() => {
     const token = params.get("token");
+    const loggedInUser = params.get("name")
 
     if (token) {
       localStorage.setItem("jwt", token);
-      console.log('token')
-      console.log(token)
+      localStorage.setItem("loggedInUser",loggedInUser)
       login(token);
       navigate("/dashboard");
     } else {
