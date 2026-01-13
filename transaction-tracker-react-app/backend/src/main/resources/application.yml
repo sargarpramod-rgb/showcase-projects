@@ -9,7 +9,7 @@ spring:
             scope:
               - email
               - profile
-            redirect-uri: http://localhost:8080/login/oauth2/code/google
+            redirect-uri: ${REDIRECT_URL}
 
   datasource:
     url: jdbc:h2:file:/data1/h2/app-db
@@ -40,9 +40,9 @@ spring:
 
 app:
   jwt:
-    secret: ${APP_SECRET}
-  crypto:
-    master-key: ${CRYPTO_MASTER_KEY}
+    secret: ${app.jwt.secret}
+#  crypto:
+#    master-key: ${CRYPTO_MASTER_KEY}
 
 server:
   port: 8080
