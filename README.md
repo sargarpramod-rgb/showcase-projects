@@ -1,14 +1,104 @@
-# showcase-projects
 # 💸 Transaction Tracker App
+Secure, Cloud-Native Personal Finance Management System
 
-A simple web application to help users upload, categorize, and visualize their financial transactions with ease.
+A full-stack, production-ready web application that allows users to upload, categorize, and analyze financial transactions securely using modern cloud and authentication best practices.
 
-## 🚀 Features
+Live Demo: https://www.wheresmymoneyat.in
+---
 
-- 📁 **Upload Transactions**: Import transaction files (current supported format is MSMoney).
-- 🏷️ **Categorize Transactions**: Assign or edit categories for individual transactions.
-- 📊 **Visual Insights**: View a real-time pie chart breakdown of expenses by category.
-- 🔄 **Auto Save**: All changes are saved to file with save button.
+## 👋 Why This Project?
+
+This project demonstrates:
+- End-to-end system design
+- Secure OAuth 2.0 authentication
+- Cloud-native AWS architecture
+- Clean frontend UX
+- Scalable backend patterns
+
+---
+
+## ⚡ Key Highlights
+
+- Secure Google OAuth 2.0 login
+- CloudFront + S3 + ALB + EC2 architecture
+- Secrets managed via AWS Secrets Manager
+- Spring Boot backend with REST APIs
+- React frontend with interactive visualization
+- Designed for extensibility (ML, exports, DB upgrades)
+
+---
+
+## 🏗️ Architecture Overview
+
+The system follows cloud-native and security-first design principles.
+
+### High-Level Architecture
+
+User -> CloudFront (SSL + CDN)  
+CloudFront -> S3 (Static Content)  
+CloudFront -> Application Load Balancer  
+Application Load Balancer -> Spring Boot Backend (EC2)  
+Spring Boot Backend -> Google OAuth 2.0  
+
+### Low-Level Architecture (Security & OAuth)
+
+- OAuth 2.0 Authorization Code Flow
+- IAM Role based access to AWS Secrets Manager
+- OAuth Client ID & Secret stored securely
+- Tokens exchanged securely with Google OAuth
+
+---
+
+## 🧾 Functional Capabilities
+
+### Transaction Upload
+- Upload transaction reports (MSMoney format)
+- Backend parsing and validation
+
+### Categorization
+- Inline category editing
+- Bulk update support
+- Persistent storage
+
+### Visual Insights
+- Category and sub-category breakdown
+- Monthly and yearly views
+
+### Security
+- OAuth 2.0 Authorization Code flow
+- No secrets stored in code
+- IAM-based secret access
+
+---
+
+## 🖥️ Tech Stack
+
+Frontend: React.js  
+Backend: Spring Boot, Spring Security  
+Authentication: Google OAuth 2.0  
+Database: H2 (file-based)  
+Cloud: AWS (CloudFront, S3, ALB, EC2, IAM, Secrets Manager)  
+Visualization: Chart-based UI  
+
+---
+
+## 🚀 Future Enhancements
+
+- PDF / Excel / CSV transaction support
+- Encrypted, per-user data storage
+- ML-based auto-categorization
+- Exportable financial reports
+- Advanced analytics dashboards
+
+---
+
+## 🤝 Contact
+
+If you are a recruiter or engineer:
+- Feel free to explore the repository
+- Star the project if you find it useful
+- Reach out for collaboration
+
 
 ## 🖼️ Screenshots
 
@@ -20,78 +110,3 @@ A simple web application to help users upload, categorize, and visualize their f
 
 ### 📊 Expense Visualization
 ![Pie Chart](https://github.com/sargarpramod-rgb/showcase-projects/blob/4727c9a1386a15ed1d694f9e4ecbb711f1320f21/transaction-tracker-react-app/frontend/assets/images/%406_Category%20and%20sub%20category%20breakdown.PNG)
-
-## 🖥️ Tech Stack
-
-- **Frontend**: React.js
-- **Backend**: Spring Boot (Java)
-- **Database**: Need to implement save to database.
-- **Visualization**: pie chart rendering
-
-✨ Upcoming Features (Planned)
-
-📅 Date filtering and monthly summaries
-🧠 Auto-categorization using ML
-📥 Export categorized reports
-
-
-### ⚙️ React Setup
-
-1. **Navigate to the React project directory**
-   After cloning the repository, go to the folder containing the React frontend code:
-
-   ```bash
-   cd frontend
-   ```
-
-2. **Install dependencies and run the app**
-   Use the following commands to install missing packages and start the development server:
-
-   ```bash
-   npm install
-   npm start
-   ```
-
-   This will launch the app at `http://localhost:3000`.
-
-3. **Build for production**
-   Once development is complete, generate a production-ready build:
-
-   ```bash
-   npm run build
-   ```
-
-   This will create a `build/` folder with the optimized static files.
-
----
-
-### 🔗 Integrating React with Spring Boot Backend
-
-1. **Copy the production build to the backend**
-   Move the contents of the `build/` folder into the `src/main/resources/static` directory of your Spring Boot project.
-
-2. **Update static asset paths (if needed)**
-   Open `index.html` in the build folder and ensure CSS and JS paths are relative.
-   For example, change:
-
-   ```html
-   <link href="/static/css/main.e6c13ad2.css" rel="stylesheet" />
-   ```
-
-   to:
-
-   ```html
-   <link href="/css/main.e6c13ad2.css" rel="stylesheet" />
-   ```
-
-3. **Start the Spring Boot backend**
-   Use the following command to run your backend:
-
-   ```bash
-   ./mvnw spring-boot:run
-   ```
-
-   App will now serve the React frontend directly from the backend.
-
-4 **In Order to view h2 console**
-   http://localhost:8080/h2-console
