@@ -12,7 +12,7 @@ This project demonstrates:
 - End-to-end system design
 - Secure OAuth 2.0 authentication
 - Cloud-native AWS architecture
-- Clean frontend UX
+- Clean frontend UX ( Improved furhter in the upcoming releases).
 - Scalable backend patterns
 
 ---
