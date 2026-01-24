@@ -109,9 +109,16 @@ const handleBulkApply = () => {
 
 return (
         <Box>
-          <TableContainer component={Paper} sx={{ maxHeight: 500, marginTop: 2 }}>
-            <Table stickyHeader>
-              <TableHead>
+          <TableContainer component={Paper}
+            sx={{
+                maxHeight: 500,
+                marginTop: 2,
+                borderRadius: 2,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
+              }}
+          >
+            <Table stickyHeader sx={{ "& .MuiTableCell-root": { fontSize: "0.9rem", padding: "8px 12px" } }}>
+              <TableHead sx={{ backgroundColor: "#f9fafb" }}>
                 <TableRow>
                   {showUncategorized && (
                     <TableCell padding="checkbox">
@@ -129,53 +136,66 @@ return (
                                               { key: "category", label: "Category" },
                                               { key: "subcategory", label: "Sub-category" }
                                             ].map(({ key, label }) => (
-                                              <TableCell key={key}>
-                                                {key !== "totalAmount" && key !== "transactionCount" ? ( <TextField
-                                                  size="small"
-                                                  variant="outlined"
-                                                  placeholder={`Search ${label}`}
-                                                  onChange={(e) => setFilterText(prev => ({ ...prev, [key]: e.target.value }))}
-                                                  value={filterText[key]}
-                                                  fullWidth
-                                                  InputProps={{
-                                                                endAdornment: (
-                                                                  <InputAdornment position="end">
-                                                                    <IconButton  onClick={(e) => setFilterText(prev => ({ ...prev, [key]: "" }))} size="small">
-                                                                      <ClearIcon />
-                                                                    </IconButton>
-                                                                  </InputAdornment>
-                                                                ),
-                                                              }}
-
-                                                />) : null}
-                                              </TableCell>
+                                              <TableCell key={key} sx={{ fontWeight: 600 }}>
+                                                      {key !== "totalAmount" && key !== "transactionCount" ? (
+                                                        <TextField
+                                                          size="small"
+                                                          variant="outlined"
+                                                          placeholder={`Search ${label}`}
+                                                          onChange={(e) =>
+                                                            setFilterText((prev) => ({ ...prev, [key]: e.target.value }))
+                                                          }
+                                                          value={filterText[key]}
+                                                          fullWidth
+                                                          InputProps={{
+                                                            sx: { fontSize: "0.8rem" },
+                                                            endAdornment: (
+                                                              <InputAdornment position="end">
+                                                                <IconButton
+                                                                  onClick={() =>
+                                                                    setFilterText((prev) => ({ ...prev, [key]: "" }))
+                                                                  }
+                                                                  size="small"
+                                                                >
+                                                                  <ClearIcon fontSize="small" />
+                                                                </IconButton>
+                                                              </InputAdornment>
+                                                            )
+                                                          }}
+                                                        />
+                                                      ) : null}
+                                                    </TableCell>
                                             ))}
                 </TableRow>
 
                 {/* Bulk apply row */}
                 {showUncategorized && (
-                  <TableRow>
-                    <TableCell padding="checkbox" /> {/* empty for alignment */}
+                  <TableRow sx={{ backgroundColor: "#f1f5f9" }}>
+                    <TableCell padding="checkbox" />
                     <TableCell colSpan={2}>
-                      <Typography variant="body2">Bulk Apply to Selected</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        Bulk Apply to Selected
+                      </Typography>
                     </TableCell>
                     <TableCell padding="checkbox" />
-                    {/* Bulk Category Select */}
                     <TableCell>
                       <FormControl size="small" fullWidth>
                         <Select
                           value={bulkCategory}
                           onChange={(e) => {
                             setBulkCategory(e.target.value);
-                            // auto-pick first subcategory if available
                             const subs = categorySubcategories[e.target.value] || [];
-                            setBulkSubcategory(subs[0] || '');
+                            setBulkSubcategory(subs[0] || "");
                           }}
                           displayEmpty
                         >
-                          <MenuItem value="" disabled>Select Category</MenuItem>
+                          <MenuItem value="" disabled>
+                            Select Category
+                          </MenuItem>
                           {categories.map((cat) => (
-                            <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                            <MenuItem key={cat} value={cat}>
+                              {cat}
+                            </MenuItem>
                           ))}
                         </Select>
                       </FormControl>
@@ -214,7 +234,14 @@ return (
                 {aggregatedData
                   .slice(page * rowsPerPage, (page + 1) * rowsPerPage)
                   .map((row) => (
-                    <TableRow key={row.payee}>
+                    <TableRow
+                      key={row.payee}
+                      hover
+                      sx={{
+                        "&:hover": { backgroundColor: "#f3f4f6" },
+                        borderBottom: "1px solid #e5e7eb"
+                      }}
+                    >
                       {showUncategorized && (
                         <TableCell padding="checkbox">
                           <Checkbox
@@ -224,20 +251,22 @@ return (
                         </TableCell>
                       )}
 
-                      <TableCell>
+                      <TableCell sx={{ maxWidth: 150 }}>
                         <MuiTooltip title={row.payeeFullName} arrow>
-                          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "150px", display: "inline-block" }}>
+                          <Typography
+                            noWrap
+                            sx={{ fontSize: "0.85rem", fontWeight: 500 }}
+                          >
                             {row.payee}
-                          </span>
+                          </Typography>
                         </MuiTooltip>
                       </TableCell>
 
                       <TableCell>
                         <Typography
-                          style={{
-                            color: row.totalAmount > 0 ? "green" : "#ff6666",
-                            fontFamily: "'Poppins', sans-serif",
-                            letterSpacing: "0.5px"
+                          sx={{
+                            color: row.totalAmount > 0 ? "success.main" : "error.main",
+                            fontWeight: 600
                           }}
                         >
                           {row.totalAmount > 0
@@ -247,7 +276,14 @@ return (
                       </TableCell>
 
                       <TableCell>
-                        <Button onClick={() => { setSelectedPayee(row); setOpenDialog(true); }}>
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => {
+                            setSelectedPayee(row);
+                            setOpenDialog(true);
+                          }}
+                        >
                           {row.transactionCount}
                         </Button>
                       </TableCell>
