@@ -24,6 +24,8 @@ import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import GroupIcon from '@mui/icons-material/Group';
 import config from './/config';
+import { saveTransactions } from "./components/api/transactionsApi";
+
 
 export default function MultiStepFormWithStyledTabs() {
   const [file, setFile] = useState(null);
@@ -52,22 +54,8 @@ export default function MultiStepFormWithStyledTabs() {
     setSaving(true)
     try {
             event.preventDefault();
-            const jwt = localStorage.getItem("jwt");
 
-            const response = await fetch(`${config.API_BASE}/api/save-transactions`, {
-              method: "POST",
-               headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${jwt}`
-                  },
-              body:  JSON.stringify(aggregatedData, null, 2)
-            });
-                console.log("aggregatedData" + JSON.stringify(aggregatedData, null, 2))
-            if (!response.ok) {
-              throw new Error("Error in data save");
-            }
-
-            const result = await response.json();
+            const result = await saveTransactions(aggregatedData);
             //console.log("Data saved successfully:", result);
             setIsSaved(true);
           } catch (error) {
@@ -241,7 +229,6 @@ console.log("monthYearStrings=", periodLabel);
                     <DialogActions>
                       <Button
                         onClick={() => {
-                          setShowSummary(true);
                           setIsSaved(false); // close dialog
                         }}
                         color="primary"
