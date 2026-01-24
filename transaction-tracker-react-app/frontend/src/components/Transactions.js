@@ -27,7 +27,15 @@ const [categories, setCategories] = useState([]);
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const response = await fetch(`${config.API_BASE}/api/transaction-categories`);
+        const jwt = localStorage.getItem("jwt");
+
+        const response = await fetch(`${config.API_BASE}/api/transaction-categories`, {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${jwt}`,   // Attach JWT here
+            "Content-Type": "application/json"
+          }
+        })
         const json = await response.json();
 
         setCategoryJson(json);

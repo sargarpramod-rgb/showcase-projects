@@ -25,9 +25,16 @@ export default function TransactionSummaryView({onLoadingChange}) {
 useEffect(() => {
     const fetchTransactions = async () => {
       try {
+         const jwt = localStorage.getItem("jwt");
         onLoadingChange(true);
 
-        const response = await fetch(`${config.API_BASE}/api/transactions-summary-by/2025`);
+        const response = await fetch(`${config.API_BASE}/api/transactions-summary-by/2025`, {
+                  method: "GET",
+                  headers: {
+                    "Authorization": `Bearer ${jwt}`,   // Attach JWT here
+                    "Content-Type": "application/json"
+                  }
+                })
         const json = await response.json();
 
         setRawTransactions(json);
