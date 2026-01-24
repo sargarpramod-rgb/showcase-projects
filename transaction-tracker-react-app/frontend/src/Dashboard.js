@@ -115,12 +115,16 @@ export default function MultiStepFormWithStyledTabs() {
 
  console.log("original aggregatedData"+JSON.stringify(aggregatedData, null, 2))
 
-   aggregatedData = aggregatedData
-     .filter(item => !isPayeeSet || item.payee?.trim().toLowerCase().includes(normalizedFilterPayee))
-     .filter(item => !isCategorySet || (item.category?.trim().toLowerCase().includes(normalizedFilterCategory)
-                                        && item.category !== "undefined"))
-     .filter(item => !isSubCategorySet || (item.subcategory?.trim().toLowerCase().includes(normalizedFilterSubCategory)
-                                           && item.subcategory !== "undefined"))
+   const filteredData = aggregatedData.filter(item => {
+     if (!filterText) return true;
+     return (
+       item.payee?.trim().toLowerCase().includes(filterText.toLowerCase()) ||
+       item.category?.trim().toLowerCase().includes(filterText.toLowerCase()) ||
+       item.subcategory?.trim().toLowerCase().includes(filterText.toLowerCase())
+     );
+   });
+
+   aggregatedData = filteredData
      .map(item => {
        // safeguard for missing transactions
        const txns = Array.isArray(item.transactions) ? item.transactions : [];

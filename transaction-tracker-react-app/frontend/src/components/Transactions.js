@@ -108,6 +108,28 @@ const handleBulkApply = () => {
 };
 
 return (
+        <>
+        {/* 🔹 Unified Search Bar */}
+              <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}>
+                <TextField
+                  size="small"
+                  variant="outlined"
+                  placeholder="Search Payee, Category, Subcategory..."
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                  sx={{ width: 300 }}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton onClick={() => setFilterText("")} size="small">
+                          <ClearIcon fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    )
+                  }}
+                />
+              </Box>
+
         <Box>
           <TableContainer component={Paper}
             sx={{
@@ -129,44 +151,12 @@ return (
                     </TableCell>
                   )}
 
-                  {[
-                                              { key: "payee", label: "Payee" },
-                                              { key: "totalAmount", label: "Total Amount" },
-                                              { key: "transactionCount", label: "Transaction Count" },
-                                              { key: "category", label: "Category" },
-                                              { key: "subcategory", label: "Sub-category" }
-                                            ].map(({ key, label }) => (
-                                              <TableCell key={key} sx={{ fontWeight: 600 }}>
-                                                      {key !== "totalAmount" && key !== "transactionCount" ? (
-                                                        <TextField
-                                                          size="small"
-                                                          variant="outlined"
-                                                          placeholder={`Search ${label}`}
-                                                          onChange={(e) =>
-                                                            setFilterText((prev) => ({ ...prev, [key]: e.target.value }))
-                                                          }
-                                                          value={filterText[key]}
-                                                          fullWidth
-                                                          InputProps={{
-                                                            sx: { fontSize: "0.8rem" },
-                                                            endAdornment: (
-                                                              <InputAdornment position="end">
-                                                                <IconButton
-                                                                  onClick={() =>
-                                                                    setFilterText((prev) => ({ ...prev, [key]: "" }))
-                                                                  }
-                                                                  size="small"
-                                                                >
-                                                                  <ClearIcon fontSize="small" />
-                                                                </IconButton>
-                                                              </InputAdornment>
-                                                            )
-                                                          }}
-                                                        />
-                                                      ) : null}
-                                                    </TableCell>
-                                            ))}
-                </TableRow>
+              <TableCell sx={{ fontWeight: 600 }}>Payee</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Total Amount</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Transaction Count</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Category</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Sub-category</TableCell>
+           </TableRow>
 
                 {/* Bulk apply row */}
                 {showUncategorized && (
@@ -335,5 +325,6 @@ return (
             }
           />
         </Box>
+       </>
     );
 }
