@@ -122,7 +122,7 @@ return (
                         showUncategorized={showUncategorized}
                          onIncomeClick = {onIncomeClick}
                          showIncome = {showIncome}/>
-                        <Button variant="contained" startIcon={<InsertChartIcon />} onClick={handleOpenChartDialog} color="primary">SHOW CHARTS</Button>
+                        {/* <Button variant="contained" startIcon={<InsertChartIcon />} onClick={handleOpenChartDialog} color="primary">SHOW CHARTS</Button> */}
 
                        </Box>
 
