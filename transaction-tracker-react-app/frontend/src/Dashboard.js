@@ -9,6 +9,7 @@ import { useDropzone } from 'react-dropzone';
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import SaveIcon from "@mui/icons-material/Save";
 import Transactions from "./components/Transactions";
+import { getPeriodLabel } from "./components/utils/dateUtils";
 import PayeeTransactionsDialog from "./components/PayeeTransactionsDialog";
 import CategoryBreakdownDialog from "./components/CategoryBreakdownDialog";
 import LoadingOverlay from "./components/LoadingOverlay";
@@ -24,34 +25,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import GroupIcon from '@mui/icons-material/Group';
 import config from './/config';
 
-
-// Custom Styled Tabs
-const CustomTabs = styled(Tabs)({
-  backgroundColor: "#f5f5f5",
-  borderRadius: "10px 10px 0 0",
-  width: "85%", // Adjusted width to 85% of the screen
-  margin: "auto",
-  "& .MuiTabs-indicator": {
-    display: "none",
-  },
-});
-
-// Custom Styled Tab
-const CustomTab = styled(Tab)(({ selected }) => ({
-  fontWeight: "bold",
-  textTransform: "none",
-  borderRadius: "10px 10px 0 0",
-  backgroundColor: selected ? "#ffffff" : "#d1d1d1",
-  boxShadow: selected ? "0px -3px 6px rgba(0,0,0,0.2)" : "none",
-  transition: "all 0.3s",
-  "&:hover": {
-    backgroundColor: selected ? "#fff" : "#e0e0e0",
-  },
-}));
-
-
 export default function MultiStepFormWithStyledTabs() {
-  const [tabIndex, setTabIndex] = useState(0);
   const [file, setFile] = useState(null);
   const [isSaved, setIsSaved] = useState(false);
 
@@ -94,7 +68,7 @@ export default function MultiStepFormWithStyledTabs() {
             }
 
             const result = await response.json();
-            console.log("Data saved successfully:", result);
+            //console.log("Data saved successfully:", result);
             setIsSaved(true);
           } catch (error) {
             console.error("Error saving the data:", error);
@@ -102,11 +76,6 @@ export default function MultiStepFormWithStyledTabs() {
              setSaving(false);
           }
   };
-
-  const progressValue = tabIndex === 0 ? 33 : tabIndex === 1 ? 66 : 100;
-
-  console.log("filtertext = " +filterText)
-
 
     let smallTransactionsCount = 0;
     let smallTransactionsTotal = 0;
@@ -196,37 +165,8 @@ export default function MultiStepFormWithStyledTabs() {
       };
     console.log("aggregatedData"+JSON.stringify(aggregatedData, null, 2))
 
-// Utility: convert date string → "Month-Year"
-const formatMonthYear = (dateStr) => {
-  // Take only the dd-mm-yyyy part
-  const rawDate = dateStr.split(" ")[0]; // "09-10-2025"
-  const [month, day, year] = rawDate.split("-");
-  const jsDate = new Date(`${year}-${month}-${day}`);
-
-  const monthNames = [
-    "January","February","March","April","May","June",
-    "July","August","September","October","November","December"
-  ];
-
-  return `${monthNames[jsDate.getMonth()]}-${jsDate.getFullYear()}`;
-};
-
-// Loop through outer array + inner transactions
-const uniqueMonthYears = [
-  ...new Set(
-    aggregatedData.flatMap(item =>
-      Array.isArray(item.transactions)
-        ? item.transactions.map(txn => formatMonthYear(txn.date))
-        : []
-    )
-  )
-];
-
-console.log("monthYearStrings=",uniqueMonthYears);
-
-const periodLabel = uniqueMonthYears.length > 0
-  ? uniqueMonthYears.join(", ")
-  : "Selected Period";
+const periodLabel = getPeriodLabel(aggregatedData);
+console.log("monthYearStrings=", periodLabel);
 
 
   const handleOpenChartDialog = () => {
@@ -242,43 +182,6 @@ const periodLabel = uniqueMonthYears.length > 0
      console.log("selected category")
      setSelectedCategory(data.name);
    };
-
-
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
-
-    const sortTransactions = (data, sortKey, ascending = true) => {
-      if (!data || typeof data !== "object") return {}; // Handle invalid data
-
-      return Object.keys(data).reduce((sortedData, date) => {
-        sortedData[date] = [...data[date]].sort((a, b) => {
-          if (typeof a[sortKey] === "string") {
-            return ascending
-              ? a[sortKey].localeCompare(b[sortKey])
-              : b[sortKey].localeCompare(a[sortKey]);
-          } else {
-            return ascending
-              ? a[sortKey] - b[sortKey]
-              : b[sortKey] - a[sortKey];
-          }
-        });
-        return sortedData;
-      }, {});
-    };
-
-  const handleSort = (key) => {
-      let direction = 'asc';
-        if (sortConfig.key === key && sortConfig.direction === 'asc') {
-          direction = 'desc';
-        }
-        console.log(key)
-        console.log(direction)
-        setSortConfig({ key, direction });
-
-        // Sort using the computed direction
-        const sortedData = sortTransactions(data, key, direction === 'asc');
-        console.log(sortedData)
-        setData({ ...sortedData }); // Set sorted data back to state for the table
-  };
 
 
   return (
@@ -343,7 +246,7 @@ const periodLabel = uniqueMonthYears.length > 0
                         }}
                         color="primary"
                       >
-                        View Summary
+                        Close
                       </Button>
                     </DialogActions>
                   </Dialog>
