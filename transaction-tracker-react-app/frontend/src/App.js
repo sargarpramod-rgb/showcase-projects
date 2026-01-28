@@ -1,10 +1,10 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import LoginPage from "./components/pages/LoginPage";
-import LoginSuccess from "./components/pages/LoginSuccess";
-import Dashboard from "./Dashboard";
-import ProtectedRoute from "./components/auth/ProtectedRoute";
-import HomeRedirect from "./components/pages/HomeRedirect";
-import { AuthProvider } from "./components/auth/AuthContext";
+import LoginPage from "./pages/LoginPage";
+import LoginSuccess from "./pages/LoginSuccess";
+import Dashboard from "./pages/Dashboard";
+import ProtectedRoute from "./auth/ProtectedRoute";
+import HomeRedirect from "./pages/HomeRedirect";
+import { AuthProvider } from "./auth/AuthContext";
 
 function App() {
   return (

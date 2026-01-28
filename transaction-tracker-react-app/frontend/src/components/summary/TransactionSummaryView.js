@@ -8,9 +8,9 @@ import {
   Treemap ,BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,LabelList,
   PieChart, Pie, Cell
 } from "recharts";
-import config from "../config";
+import config from "../../config/config";
 
-export default function TransactionSummaryView({onLoadingChange}) {
+export default function TransactionSummaryView({onBack,onLoadingChange}) {
   const [rawTransactions, setRawTransactions] = useState("");
   const [selectedYear, setSelectedYear] = useState("2025");
   const [selectedMonths, setSelectedMonths] = useState([]);

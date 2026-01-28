@@ -5,7 +5,7 @@ import { Tooltip as MuiTooltip,AppBar, Tabs, Tab, Box, Typography, Button, Table
     MenuItem, Select, FormControl} from "@mui/material";
 import {TablePagination} from "@mui/material";
 import ClearIcon from "@mui/icons-material/Clear"; // Import Clear Icon
-import config from "../config";
+import { fetchTransactionCategories } from "../../api/transactionsApi";
 
 export default function Transactions({ filters, transactionsData, modalHandlers }) {
 
@@ -27,16 +27,7 @@ const [categories, setCategories] = useState([]);
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const jwt = localStorage.getItem("jwt");
-
-        const response = await fetch(`${config.API_BASE}/api/transaction-categories`, {
-          method: "GET",
-          headers: {
-            "Authorization": `Bearer ${jwt}`,   // Attach JWT here
-            "Content-Type": "application/json"
-          }
-        })
-        const json = await response.json();
+        const json = await fetchTransactionCategories();
 
         setCategoryJson(json);
 
@@ -106,6 +97,8 @@ const handleBulkApply = () => {
   setBulkSubcategory('');
   setSelected([]); // optional: clear selection
 };
+
+console.log(aggregatedData ? Object.values(aggregatedData).flat().length : 0)
 
 return (
         <>
@@ -311,12 +304,22 @@ return (
                     </TableRow>
                   ))}
               </TableBody>
+              <TablePagination
+                          component="div"
+                          count={aggregatedData ? Object.values(aggregatedData).flat().length : 0}
+                          page={page}
+                          onPageChange={(event, newPage) => setPage(newPage)}
+                          rowsPerPage={rowsPerPage}
+                          onRowsPerPageChange={(event) =>
+                            setRowsPerPage(parseInt(event.target.value, 10))
+                          }
+                        />
             </Table>
           </TableContainer>
 
           <TablePagination
             component="div"
-            count={aggregatedData.length}
+            count={aggregatedData ? Object.values(aggregatedData).flat().length : 0}
             page={page}
             onPageChange={(event, newPage) => setPage(newPage)}
             rowsPerPage={rowsPerPage}
