@@ -2,20 +2,18 @@ import React, { useState } from "react";
 import LandingScreen from "./LandingScreen";
 import UploadScreen from "./UploadScreen";
 import TransactionSummaryView from "../components/summary/TransactionSummaryView";
-import { uploadTransactions } from "../api/transactionsApi";
+import { uploadTransactions,saveTransactions } from "../api/transactionsApi";
 import LoadingOverlay from "../components/LoadingOverlay";
 
 export default function Dashboard() {
-  // Default state is "landing"
   const [activeScreen, setActiveScreen] = useState("landing");
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [data, setData] = useState("");
 
   const handleViewTransactionsClick = () => setActiveScreen("past");
-  const handleSaveAndClose = () => setActiveScreen("landing");
   const handleBackToDashboard = () => setActiveScreen("landing");
 
- console.log(data)
 
   return (
     <>
@@ -29,10 +27,13 @@ export default function Dashboard() {
       )}
 
      <LoadingOverlay loading={loading} message="Uploading…" />
+     <LoadingOverlay loading={saving} message="Saving Transactions…" />
+
 
       {activeScreen === "upload" && (
         <UploadScreen
-          onSave={handleSaveAndClose}
+          setActiveScreen={setActiveScreen}
+          setSaving={setSaving}
           onBack={handleBackToDashboard}
           data={data}
           setData={setData}
@@ -42,7 +43,7 @@ export default function Dashboard() {
       {activeScreen === "past" && (
         <TransactionSummaryView
             onBack={handleBackToDashboard}
-            onLoadingChange={handleBackToDashboard}
+            onLoadingChange={setLoading}
         />
       )}
     </>

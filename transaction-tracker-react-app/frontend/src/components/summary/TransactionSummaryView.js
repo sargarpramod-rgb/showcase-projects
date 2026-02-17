@@ -1,14 +1,27 @@
 import React, { useState,useEffect,useMemo  } from "react";
 import {
-  Card, Typography, Box, Grid, TextField, MenuItem,
-  Button, FormGroup, FormControlLabel, Checkbox, Paper,
-  Table, TableHead, TableRow, TableCell, TableBody
+  Box,
+  Card,
+  Typography,
+  Grid,
+  Paper,
+  TextField,
+  MenuItem,
+  FormGroup,
+  FormControlLabel,
+  Checkbox,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  Button,
+  Divider,
 } from "@mui/material";
-import {
-  Treemap ,BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,LabelList,
-  PieChart, Pie, Cell
-} from "recharts";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import { ResponsiveContainer, PieChart, Pie, Cell, LabelList, Tooltip } from "recharts";
 import config from "../../config/config";
+import { fetchPreviousTransactions } from "../../api/transactionsApi";
 
 export default function TransactionSummaryView({onBack,onLoadingChange}) {
   const [rawTransactions, setRawTransactions] = useState("");
@@ -16,7 +29,7 @@ export default function TransactionSummaryView({onBack,onLoadingChange}) {
   const [selectedMonths, setSelectedMonths] = useState([]);
   const [drillCategory, setDrillCategory] = useState(null);
   const [drillSubcategory, setDrillSubcategory] = useState(null);
-  const [viewMode, setViewMode] = useState("waterfall"); // "waterfall" or "treemap"
+  const [viewMode, setViewMode] = useState("donut"); // "waterfall" or "treemap"
 
   const months = ["January","February","March","April","May","June",
                   "July","August","September","October","November","December"];
@@ -28,16 +41,9 @@ useEffect(() => {
          const jwt = localStorage.getItem("jwt");
         onLoadingChange(true);
 
-        const response = await fetch(`${config.API_BASE}/api/transactions-summary-by/2025`, {
-                  method: "GET",
-                  headers: {
-                    "Authorization": `Bearer ${jwt}`,   // Attach JWT here
-                    "Content-Type": "application/json"
-                  }
-                })
-        const json = await response.json();
+        const response = await fetchPreviousTransactions();
 
-        setRawTransactions(json);
+        setRawTransactions(response);
 
         onLoadingChange(false);
       } catch (error) {
@@ -61,10 +67,6 @@ const getMonthYear = (dateStr) => {
 };
 
 
-
-
-// Example JSON transactions (replace with API or props)
-
 const transactions = Array.isArray(rawTransactions)
   ? rawTransactions.map(t => {
                               const { month, year } = getMonthYear(t.date);
@@ -73,13 +75,6 @@ const transactions = Array.isArray(rawTransactions)
   : [];
 
   console.log("transactions ",transactions)
-
- /* // Normalize transactions: add month/year fields
-    const transactions = rawTransactions.map(t => {
-      const { month, year } = getMonthYear(t.date);
-      return { ...t, month, year };
-    });*/
-
 
   const handleMonthToggle = (month) => {
     setSelectedMonths((prev) =>
@@ -242,10 +237,6 @@ const waterfallData = [
    }, []);
  })();
 
-
-
-
-
   //  Drill-down transactions
   const drillTransactions = drillSubcategory
     ? filtered.filter((t) => t.subcategory === drillSubcategory)
@@ -267,318 +258,211 @@ console.log("expenseChartData", expenseChartData);
 
 
 
-  return (
-    <Card sx={{ p: 3, boxShadow: 3 }}>
-      <Typography variant="h5" gutterBottom>Transaction Summary</Typography>
-
-      {/* Summary Cards */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={3}>
-                  <Paper sx={{ p: 2, bgcolor: "#e8f5e9" }}>
-                    <Typography color="success.main" variant="h6">Income</Typography>
-                    <Typography variant="h5">₹{formatIndianNumber(totalIncome)} (100%) </Typography>
-                  </Paper>
-                </Grid>
-        <Grid item xs={3}>
-          <Paper sx={{ p: 2, bgcolor: "#fff3e0" }}>
-            <Typography color="warning.main" variant="h6">Investments</Typography>
-            <Typography variant="h5">₹{formatIndianNumber(totalInvestments)} ({investmentPercent}%)</Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={3}>
-                  <Paper sx={{ p: 2, bgcolor: "#ffebee" }}>
-                    <Typography color="error" variant="h6">Expenses</Typography>
-                    <Typography variant="h5">₹{formatIndianNumber(totalExpenses)} ({expensePercent}%)</Typography>
-                  </Paper>
-        </Grid>
-        <Grid item xs={3}>
-          <Paper sx={{ p: 2, bgcolor: "#e3f2fd" }}>
-            <Typography variant="h6">Net Balance</Typography>
-            <Typography variant="h5" color={netBalance < 0 ? "error" : "success.main"}>
-              ₹{formatIndianNumber(netBalance)} ({netBalancePercent}%)
-            </Typography>
-          </Paper>
-        </Grid>
-      </Grid>
-
-      {/* Filters */}
-      <Box sx={{ display: "flex", gap: 2, mb: 3 }}>
-        <TextField select label="Year" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)}>
-          {years.map((y) => <MenuItem key={y} value={y}>{y}</MenuItem>)}
-        </TextField>
-        <FormGroup row>
-          {months.map((m) => (
-            <FormControlLabel
-              key={m}
-              control={<Checkbox checked={selectedMonths.includes(m)} onChange={() => handleMonthToggle(m)} />}
-              label={m}
-            />
-          ))}
-        </FormGroup>
-      </Box>
-
-        <Box sx={{ mb: 2 }}>
+   return (
+      <Card sx={{ p: 3, boxShadow: 1 }}>
+        {/* Header with Back button */}
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+          <Typography variant="h5">Transaction Summary</Typography>
           <Button
-            variant={viewMode === "waterfall" ? "contained" : "outlined"}
-            onClick={() => setViewMode("waterfall")}
-            sx={{ mr: 1 }}
+            variant="outlined"
+            startIcon={<ArrowBackIcon />}
+            onClick={() => onBack()}
           >
-            Waterfall
-          </Button>
-          <Button
-            variant={viewMode === "treemap" ? "contained" : "outlined"}
-            onClick={() => setViewMode("treemap")}
-            sx={{ mr: 1 }}
-          >
-            Treemap
-          </Button>
-          <Button
-            variant={viewMode === "donut" ? "contained" : "outlined"}
-            onClick={() => setViewMode("donut")}
-          >
-            Donut
+            Back to Landing
           </Button>
         </Box>
+        <Divider sx={{ mb: 3 }} />
 
-      {viewMode === "waterfall" && (
-       <>
-        <Typography variant="h6" sx={{ mt: 3 }}>Money Flow (Waterfall View)</Typography>
-        <Box sx={{ height: 500 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={[
-                { name: "Income", Income: totalIncome },
-                { name: "Investments", Investments: -totalInvestments },
-                {
-                  name: "Expenses",
-                  ...expenseChartData.reduce((acc, item) => {
-                    acc[item.category] = -(item.percent / 100) * totalExpenses;
-                    return acc;
-                  }, {})
-                },
-                { name: "Net Balance", NetBalance: netBalance }
-              ]}
-              barSize={50} // thicker bars for readability
-            >
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip formatter={(val) => `₹${formatIndianNumber(Math.abs(val))}`} />
-              <Legend />
+        {/* Summary Cards */}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid item xs={3}>
+            <Paper sx={{ p: 2 }}>
+              <Typography color="success.main" variant="subtitle2">Income</Typography>
+              <Typography variant="h6">₹{formatIndianNumber(totalIncome)} (100%)</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={3}>
+            <Paper sx={{ p: 2 }}>
+              <Typography color="warning.main" variant="subtitle2">Investments</Typography>
+              <Typography variant="h6">₹{formatIndianNumber(totalInvestments)} ({investmentPercent}%)</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={3}>
+            <Paper sx={{ p: 2 }}>
+              <Typography color="error" variant="subtitle2">Expenses</Typography>
+              <Typography variant="h6">₹{formatIndianNumber(totalExpenses)} ({expensePercent}%)</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={3}>
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="subtitle2">Net Balance</Typography>
+              <Typography
+                variant="h6"
+                color={netBalance < 0 ? "error" : "success.main"}
+              >
+                ₹{formatIndianNumber(netBalance)} ({netBalancePercent}%)
+              </Typography>
+            </Paper>
+          </Grid>
+        </Grid>
 
-              {/* Income */}
-              <Bar dataKey="Income" stackId="a" fill="#4caf50">
-                <LabelList
-                  dataKey="Income"
-                  position="top"
-                  formatter={(val) => `₹${formatIndianNumber(val)}`}
-                  style={{ fontSize: 12, fontWeight: 600 }}
-                />
-              </Bar>
-
-              {/* Investments */}
-              <Bar dataKey="Investments" stackId="a" fill="#2196f3">
-                <LabelList
-                  dataKey="Investments"
-                  position="top"
-                  formatter={(val) => `₹${formatIndianNumber(Math.abs(val))}`}
-                  style={{ fontSize: 12 }}
-                />
-              </Bar>
-
-              {/* Expenses broken down by category */}
-              {expenseChartData.map((item, idx) => (
-                <Bar
-                  key={idx}
-                  dataKey={item.category}
-                  stackId="a"
-                  fill={getColorForKey(item.category)}
-                  onClick={() => setDrillCategory(item.category)}
-                >
-                  <LabelList
-                    dataKey={item.category}
-                    position="outside"
-                    formatter={(val) => `₹${formatIndianNumber(Math.abs(val))}`}
-                    style={{ fontSize: 11 }}
+        {/* Filters */}
+        <Box sx={{ display: "flex", gap: 2, mb: 3 }}>
+          <TextField
+            select
+            label="Year"
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(e.target.value)}
+            size="small"
+          >
+            {years.map((y) => (
+              <MenuItem key={y} value={y}>{y}</MenuItem>
+            ))}
+          </TextField>
+          <FormGroup row>
+            {months.map((m) => (
+              <FormControlLabel
+                key={m}
+                control={
+                  <Checkbox
+                    checked={selectedMonths.includes(m)}
+                    onChange={() => handleMonthToggle(m)}
+                    size="small"
                   />
-                </Bar>
-              ))}
-
-              {/* Net Balance */}
-              <Bar dataKey="NetBalance" stackId="a" fill={netBalance >= 0 ? "#9c27b0" : "#f44336"}>
-                <LabelList
-                  dataKey="NetBalance"
-                  position="top"
-                  formatter={(val) => `₹${formatIndianNumber(Math.abs(val))}`}
-                  style={{ fontSize: 12, fontWeight: 600 }}
-                />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+                }
+                label={m}
+              />
+            ))}
+          </FormGroup>
         </Box>
-        </>
-      )}
 
-      {viewMode === "treemap" && (
-        <Box sx={{ height: 400 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <Treemap
-              data={(expenseChartData || []).map(item => ({
-                name: item.category,
-                size: parseFloat(item.percent),
-                category: item.category
-              }))}
-              dataKey="size"
-              nameKey="name"
-              aspectRatio={4/3}
-              stroke="#fff"
-              content={({ x, y, width, height, name, size, category }) => {
-                const fillColor = getColorForKey(category);
-                return (
-                  <g>
-                    <rect
-                      x={x}
-                      y={y}
-                      width={width}
-                      height={height}
-                      style={{ fill: fillColor, stroke: "#fff", cursor: "pointer" }}
-                      onClick={() => setDrillCategory(category)}
+          <Box sx={{ display: "flex", justifyContent: "space-around", mt: 3, flexWrap: "wrap" }}>
+            {/* Income Donut */}
+            <Box sx={{ width: "30%", minWidth: 280, height: 320 }}>
+              <Typography variant="subtitle1" align="center">Income (Credits)</Typography>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={inflowChartData}
+                    dataKey="percent"
+                    nameKey="category"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={70}
+                    outerRadius={120}
+                    labelLine={false}
+                    onClick={(data) => setDrillCategory(data.category)}
+                  >
+                    {inflowChartData.map((entry, index) => (
+                      <Cell key={`income-${index}`} fill={getColorForKey(entry.category)} />
+                    ))}
+                    <LabelList
+                      dataKey="percent"
+                      position="outside"
+                      formatter={(val, name) => `${name}: ${val}%`}
+                      style={{ fontSize: 12 }}
                     />
-                    {width > 60 && height > 20 && (
-                      <text x={x + 5} y={y + 15} fontSize={12} fill="#fff" pointerEvents="none">
-                        {name} ({size}%)
-                      </text>
-                    )}
-                  </g>
-                );
-              }}
-            />
-          </ResponsiveContainer>
-        </Box>
-      )}
+                  </Pie>
+                  <Tooltip formatter={(val, name) => `${name}: ${val}%`} />
+                </PieChart>
+              </ResponsiveContainer>
+            </Box>
 
-     {viewMode === "donut" && (
-       <Box sx={{ display: "flex", justifyContent: "space-around", mt: 3, flexWrap: "wrap" }}>
-         {/* Income Donut */}
-         <Box sx={{ width: "30%", minWidth: 280, height: 320 }}>
-           <Typography variant="h6" align="center">Income (Credits)</Typography>
-           <ResponsiveContainer width="100%" height="100%">
-             <PieChart>
-               <Pie
-                 data={inflowChartData}
-                 dataKey="percent"
-                 nameKey="category"
-                 cx="50%"
-                 cy="50%"
-                 innerRadius={70}
-                 outerRadius={120}
-                 labelLine={false}
-                 onClick={(data) => setDrillCategory(data.category)}
-               >
-                 {inflowChartData.map((entry, index) => (
-                   <Cell key={`income-${index}`} fill={getColorForKey(entry.category)} />
-                 ))}
-                 <LabelList
-                   dataKey="percent"
-                   position="outside"
-                   formatter={(val, name) => `${name}: ${val}%`}
-                   style={{ fontSize: 12 }}
-                 />
-               </Pie>
-               <Tooltip formatter={(val, name) => `${name}: ${val}%`} />
-             </PieChart>
-           </ResponsiveContainer>
-         </Box>
+            {/* Expenses Donut */}
+            <Box sx={{ width: "30%", minWidth: 280, height: 320 }}>
+              <Typography variant="subtitle1" align="center">Expenses</Typography>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={expenseChartData}
+                    dataKey="percent"
+                    nameKey="category"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={70}
+                    outerRadius={120}
+                    labelLine={false}
+                    onClick={(data) => setDrillCategory(data.category)}
+                  >
+                    {expenseChartData.map((entry, index) => (
+                      <Cell key={`expense-${index}`} fill={getColorForKey(entry.category)} />
+                    ))}
+                    <LabelList
+                      dataKey="percent"
+                      position="outside"
+                      formatter={(val, name) => `${name}: ${val}%`}
+                      style={{ fontSize: 12 }}
+                    />
+                  </Pie>
+                  <Tooltip formatter={(val, name) => `${name}: ${val}%`} />
+                </PieChart>
+              </ResponsiveContainer>
+            </Box>
 
-         {/* Expenses Donut */}
-         <Box sx={{ width: "30%", minWidth: 280, height: 320 }}>
-           <Typography variant="h6" align="center">Expenses</Typography>
-           <ResponsiveContainer width="100%" height="100%">
-             <PieChart>
-               <Pie
-                 data={expenseChartData}
-                 dataKey="percent"
-                 nameKey="category"
-                 cx="50%"
-                 cy="50%"
-                 innerRadius={70}
-                 outerRadius={120}
-                 labelLine={false}
-                 onClick={(data) => setDrillCategory(data.category)}
-               >
-                 {expenseChartData.map((entry, index) => (
-                   <Cell key={`expense-${index}`} fill={getColorForKey(entry.category)} />
-                 ))}
-                 <LabelList
-                   dataKey="percent"
-                   position="outside"
-                   formatter={(val, name) => `${name}: ${val}%`}
-                   style={{ fontSize: 12 }}
-                 />
-               </Pie>
-               <Tooltip formatter={(val, name) => `${name}: ${val}%`} />
-             </PieChart>
-           </ResponsiveContainer>
-         </Box>
+            {/* Net Balance Donut */}
+            <Box sx={{ width: "30%", minWidth: 280, height: 320 }}>
+              <Typography variant="subtitle1" align="center">Net Balance</Typography>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={[
+                      { name: "Net Balance", value: netBalance },
+                      { name: "Spent", value: totalExpenses + totalInvestments },
+                    ]}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={70}
+                    outerRadius={120}
+                    labelLine={false}
+                  >
+                    <Cell fill={netBalance >= 0 ? "#9c27b0" : "#f44336"} />
+                    <Cell fill="#ccc" />
+                    <LabelList
+                      dataKey="value"
+                      position="outside"
+                      formatter={(val, name) => `${name}: ₹${formatIndianNumber(val)}`}
+                      style={{ fontSize: 12 }}
+                    />
+                  </Pie>
+                  <Tooltip formatter={(val, name) => `${name}: ₹${formatIndianNumber(val)}`} />
+                </PieChart>
+              </ResponsiveContainer>
+            </Box>
+          </Box>
+        )
 
-         {/* Net Balance Donut */}
-         <Box sx={{ width: "30%", minWidth: 280, height: 320 }}>
-           <Typography variant="h6" align="center">Net Balance</Typography>
-           <ResponsiveContainer width="100%" height="100%">
-             <PieChart>
-               <Pie
-                 data={[
-                   { name: "Net Balance", value: netBalance },
-                   { name: "Spent", value: totalExpenses + totalInvestments }
-                 ]}
-                 dataKey="value"
-                 nameKey="name"
-                 cx="50%"
-                 cy="50%"
-                 innerRadius={70}
-                 outerRadius={120}
-                 labelLine={false}
-               >
-                 <Cell fill={netBalance >= 0 ? "#9c27b0" : "#f44336"} />
-                 <Cell fill="#ccc" />
-                 <LabelList
-                   dataKey="value"
-                   position="outside"
-                   formatter={(val, name) => `${name}: ₹${formatIndianNumber(val)}`}
-                   style={{ fontSize: 12 }}
-                 />
-               </Pie>
-               <Tooltip formatter={(val, name) => `${name}: ₹${formatIndianNumber(val)}`} />
-             </PieChart>
-           </ResponsiveContainer>
-         </Box>
-       </Box>
-     )}
-
-
-      {/* Drill-down Subcategories */}
-      {drillCategory && (
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="h6">Subcategories for {drillCategory}</Typography>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Subcategory</TableCell>
-                {selectedMonths.length === 1 && <TableCell>Month</TableCell>}
-                <TableCell>Amount (₹)</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {drillResult.map((t, idx) => (
-                <TableRow key={idx} onClick={() => setDrillSubcategory(t.subcategory)}>
-                  <TableCell>{t.subcategory}</TableCell>
-                  {selectedMonths.length === 1 && <TableCell>{t.month}</TableCell>}
-                  <TableCell>₹{formatIndianNumber(Math.abs(t.totalAmount))}</TableCell>
+        {/* Drill-down Subcategories */}
+        {drillCategory && (
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="subtitle1">Subcategories for {drillCategory}</Typography>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Subcategory</TableCell>
+                  {selectedMonths.length === 1 && <TableCell>Month</TableCell>}
+                  <TableCell>Amount (₹)</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Box>
-      )}
+              </TableHead>
+              <TableBody>
+                {drillResult.map((t, idx) => (
+                  <TableRow
+                    key={idx}
+                    hover
+                    onClick={() => setDrillSubcategory(t.subcategory)}
+                    sx={{ cursor: "pointer" }}
+                  >
+                    <TableCell>{t.subcategory}</TableCell>
+                    {selectedMonths.length === 1 && <TableCell>{t.month}</TableCell>}
+                    <TableCell>₹{formatIndianNumber(Math.abs(t.totalAmount))}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Box>
+        )}
+
 
       {/*  Drill-down Table */}
      {drillSubcategory && (

@@ -19,11 +19,15 @@ export const saveTransactions = async (aggregatedData) => {
   return response.text();
 };
 
-export const fetchTransactions = async () => {
+export const fetchPreviousTransactions = async () => {
   const jwt = localStorage.getItem("jwt");
-  const response = await fetch(`${config.API_BASE}/api/transactions`, {
-    headers: { "Authorization": `Bearer ${jwt}` }
-  });
+   const response = await fetch(`${config.API_BASE}/api/transactions-summary-by/2025`, {
+                    method: "GET",
+                    headers: {
+                      "Authorization": `Bearer ${jwt}`,   // Attach JWT here
+                      "Content-Type": "application/json"
+                    }
+                  })
   if (!response.ok) throw new Error("Error fetching transactions");
   return response.json();
 };

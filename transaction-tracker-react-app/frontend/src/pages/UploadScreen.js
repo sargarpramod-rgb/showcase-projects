@@ -10,17 +10,20 @@ import {
 import { getPeriodLabel } from "../utils/dateUtils";
 import Transactions from "../components/tables/Transactions";
 import PayeeTransactionsDialog from "../components/dialogs/PayeeTransactionsDialog";
+import SuccessDialog from "../components/dialogs/SuccessDialog";
 import { aggregateTransactions } from "../utils/transactionUtils";
 import SummaryView from "../components/summary/SummaryView"
 import GroupIcon from '@mui/icons-material/Group';
+import { saveTransactions } from "../api/transactionsApi";
 
-export default function UploadScreen({ onSave, onBack,data,setData}) {
+export default function UploadScreen({ setActiveScreen,setSaving, onBack,data,setData}) {
 
    const [filterText, setFilterText] = useState("");
    const [showUncategorized, setShowUncategorized] = useState(false);
    const [selectedPayee, setSelectedPayee] = useState(null);
    const [openDialog, setOpenDialog] = useState(false);
    const [showIncome, setShowIncome] = useState(false);
+   const [isSaved, setIsSaved] = useState(false);
 
       let smallTransactionsCount = 0;
       let smallTransactionsTotal = 0;
@@ -112,6 +115,20 @@ export default function UploadScreen({ onSave, onBack,data,setData}) {
    const periodLabel = getPeriodLabel(aggregatedData);
    console.log("monthYearStrings=", periodLabel);
 
+const handleSaveAndClose = async (event) => {
+
+     setSaving(true)
+     try {
+             event.preventDefault();
+
+             const result = await saveTransactions(aggregatedData);
+             setIsSaved(true);
+           } catch (error) {
+             console.error("Error saving the data:", error);
+           } finally {
+              setSaving(false);
+           }
+   };
 
   return (
   <>
@@ -159,6 +176,12 @@ export default function UploadScreen({ onSave, onBack,data,setData}) {
             setOpenDialog={setOpenDialog}
         />
 
+      <SuccessDialog
+        isSaved={isSaved}
+        setIsSaved={setIsSaved}
+        setActiveScreen={setActiveScreen}
+       />
+
       {/* Sticky Action Bar */}
       <Box
         sx={{
@@ -179,7 +202,7 @@ export default function UploadScreen({ onSave, onBack,data,setData}) {
           variant="contained"
           color="primary"
           size="small"
-          onClick={onSave}
+          onClick={handleSaveAndClose}
         >
           Save & Close
         </Button>
