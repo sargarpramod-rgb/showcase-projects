@@ -61,3 +61,59 @@ export const uploadTransactions = async (uploadedFile) => {
   if (!response.ok) throw new Error("File upload failed");
   return response.json();
 };
+
+export const saveTransactionCategories = async (categories) => {
+  const jwt = localStorage.getItem("jwt");
+
+  const response = await fetch(`${config.API_BASE}/api/transaction-categories`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${jwt}`
+    },
+    body: JSON.stringify(categories)
+  });
+
+  if (!response.ok) {
+    throw new Error("Error saving categories");
+  }
+
+  return response.json();
+};
+
+export const fetchSubcategories = async (category) => {
+  const jwt = localStorage.getItem("jwt");
+
+  const response = await fetch(`${config.API_BASE}/api/subcategories/${encodeURIComponent(category)}`, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${jwt}`,
+      "Content-Type": "application/json"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error("Error fetching subcategories");
+  }
+
+  return response.json();
+};
+
+export const saveSubcategories = async (category, subcategories) => {
+  const jwt = localStorage.getItem("jwt");
+
+  const response = await fetch(`${config.API_BASE}/api/subcategories/${encodeURIComponent(category)}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${jwt}`
+    },
+    body: JSON.stringify(subcategories)
+  });
+
+  if (!response.ok) {
+    throw new Error("Error saving subcategories");
+  }
+
+  return response.json();
+};

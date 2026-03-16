@@ -1,4 +1,4 @@
-import React, { useState,useEffect,useMemo  } from "react";
+import React, { useState,useEffect,useMemo, useRef } from "react";
 import {
   Box,
   Card,
@@ -17,11 +17,19 @@ import {
   TableBody,
   Button,
   Divider,
+  IconButton,
+  FormControl,
+  InputLabel,
+  Select,
+  OutlinedInput,
+  Chip
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import SettingsIcon from "@mui/icons-material/Settings";
 import { ResponsiveContainer, PieChart, Pie, Cell, LabelList, Tooltip } from "recharts";
 import config from "../../config/config";
 import { fetchPreviousTransactions } from "../../api/transactionsApi";
+import CategorySettingsDialog from "../dialogs/CategorySettingsDialog";
 
 export default function TransactionSummaryView({onBack,onLoadingChange}) {
   const [rawTransactions, setRawTransactions] = useState("");
@@ -30,10 +38,13 @@ export default function TransactionSummaryView({onBack,onLoadingChange}) {
   const [drillCategory, setDrillCategory] = useState(null);
   const [drillSubcategory, setDrillSubcategory] = useState(null);
   const [viewMode, setViewMode] = useState("donut"); // "waterfall" or "treemap"
+  const [openCategorySettings, setOpenCategorySettings] = useState(false);
 
   const months = ["January","February","March","April","May","June",
                   "July","August","September","October","November","December"];
   const years = ["2023","2024","2025"];
+
+  const drillRef = useRef(null);
 
 useEffect(() => {
     const fetchTransactions = async () => {
@@ -53,6 +64,22 @@ useEffect(() => {
     };
     fetchTransactions();
   }, [onLoadingChange]);
+
+useEffect(() => {
+  // Scroll drill section into view when a category is selected
+  if (drillCategory && drillRef.current) {
+    drillRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // If there is exactly one subcategory for this category, open it automatically so details show immediately
+    const subs = Array.from(new Set(filtered.filter(t => t.category === drillCategory).map(t => t.subcategory)));
+    if (subs.length === 1) {
+      setDrillSubcategory(subs[0]);
+    } else {
+      setDrillSubcategory(null);
+    }
+  }
+}, [drillCategory]);
+
 // Utility to extract month name and year from date string
 const getMonthYear = (dateStr) => {
   const d = new Date(dateStr);
@@ -74,7 +101,7 @@ const transactions = Array.isArray(rawTransactions)
                             })
   : [];
 
-  console.log("transactions ",transactions)
+  // console.log("transactions ",transactions)
 
   const handleMonthToggle = (month) => {
     setSelectedMonths((prev) =>
@@ -82,8 +109,17 @@ const transactions = Array.isArray(rawTransactions)
     );
   };
 
+  const handleMonthSelectChange = (event) => {
+    const value = event.target.value;
+    setSelectedMonths(
+      // On autofill we get a stringified value
+      typeof value === 'string' ? value.split(',') : value
+    );
+  };
+
+  // Ensure when no months are selected we show all months
   const filtered = transactions.filter(
-    (t) => selectedMonths.includes(t.month) && t.year === parseInt(selectedYear)
+    (t) => (selectedMonths.length === 0 || selectedMonths.includes(t.month)) && t.year === parseInt(selectedYear)
   );
 
   //  Split into inflows vs outflows
@@ -162,7 +198,7 @@ const waterfallData = [
 ];
   const colors = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b"];
 
-    console.log("drillCategory",drillCategory)
+    // console.log("drillCategory",drillCategory)
   const drillSubcategories = drillCategory
     ? filtered.filter((t) => t.category === drillCategory)
     : [];
@@ -207,7 +243,7 @@ const waterfallData = [
 
    // Filter by category AND selected months
    const filtered = transactions.filter(
-     (t) => t.category === drillCategory && selectedMonths.includes(getMonthLabel(t))
+     (t) => t.category === drillCategory && (selectedMonths.length === 0 || selectedMonths.includes(getMonthLabel(t)))
    );
 
    if (selectedMonths.length > 1) {
@@ -252,52 +288,57 @@ const waterfallData = [
 const investmentPercent = totalIncome > 0 ? ((totalInvestments / totalIncome) * 100).toFixed(1) : 0;
 const expensePercent    = totalIncome > 0 ? ((totalExpenses / totalIncome) * 100).toFixed(1) : 0;
 const netBalancePercent = totalIncome > 0 ? ((netBalance / totalIncome) * 100).toFixed(1) : 0;
-console.log("inflowChartData", inflowChartData);
-console.log("expenseChartData", expenseChartData);
 
-
+// Tighter chart / typography values for denser displays
+const CHART_HEIGHT = 260;
+const INNER_RADIUS = 60;
+const OUTER_RADIUS = 100;
+const LABEL_FONT_SIZE = 11;
 
 
    return (
-      <Card sx={{ p: 3, boxShadow: 1 }}>
+      <Card sx={{ p: 2, boxShadow: 1, maxWidth: 1200, margin: '0 auto' }}>
         {/* Header with Back button */}
         <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
-          <Typography variant="h5">Transaction Summary</Typography>
+        <Box sx={{ display: "flex", justifyContent: "flex-start", alignItems: "center", gap: 2 }}>
           <Button
             variant="outlined"
             startIcon={<ArrowBackIcon />}
             onClick={() => onBack()}
+            size="small"
           >
             Back to Landing
           </Button>
+          {/* optional settings button on the right (uncomment if needed) */}
         </Box>
-        <Divider sx={{ mb: 3 }} />
+        </Box>
+        <Divider sx={{ mb: 2 }} />
 
         {/* Summary Cards */}
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid item xs={3}>
-            <Paper sx={{ p: 2 }}>
+        <Grid container spacing={1} sx={{ mb: 2 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Paper sx={{ p: 1.25 }}>
               <Typography color="success.main" variant="subtitle2">Income</Typography>
-              <Typography variant="h6">₹{formatIndianNumber(totalIncome)} (100%)</Typography>
+              <Typography variant="subtitle1">₹{formatIndianNumber(totalIncome)} (100%)</Typography>
             </Paper>
           </Grid>
-          <Grid item xs={3}>
-            <Paper sx={{ p: 2 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Paper sx={{ p: 1.25 }}>
               <Typography color="warning.main" variant="subtitle2">Investments</Typography>
-              <Typography variant="h6">₹{formatIndianNumber(totalInvestments)} ({investmentPercent}%)</Typography>
+              <Typography variant="subtitle1">₹{formatIndianNumber(totalInvestments)} ({investmentPercent}%)</Typography>
             </Paper>
           </Grid>
-          <Grid item xs={3}>
-            <Paper sx={{ p: 2 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Paper sx={{ p: 1.25 }}>
               <Typography color="error" variant="subtitle2">Expenses</Typography>
-              <Typography variant="h6">₹{formatIndianNumber(totalExpenses)} ({expensePercent}%)</Typography>
+              <Typography variant="subtitle1">₹{formatIndianNumber(totalExpenses)} ({expensePercent}%)</Typography>
             </Paper>
           </Grid>
-          <Grid item xs={3}>
-            <Paper sx={{ p: 2 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Paper sx={{ p: 1.25 }}>
               <Typography variant="subtitle2">Net Balance</Typography>
               <Typography
-                variant="h6"
+                variant="subtitle1"
                 color={netBalance < 0 ? "error" : "success.main"}
               >
                 ₹{formatIndianNumber(netBalance)} ({netBalancePercent}%)
@@ -307,7 +348,7 @@ console.log("expenseChartData", expenseChartData);
         </Grid>
 
         {/* Filters */}
-        <Box sx={{ display: "flex", gap: 2, mb: 3 }}>
+        <Box sx={{ display: "flex", gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField
             select
             label="Year"
@@ -319,199 +360,262 @@ console.log("expenseChartData", expenseChartData);
               <MenuItem key={y} value={y}>{y}</MenuItem>
             ))}
           </TextField>
-          <FormGroup row>
-            {months.map((m) => (
-              <FormControlLabel
-                key={m}
-                control={
-                  <Checkbox
-                    checked={selectedMonths.includes(m)}
-                    onChange={() => handleMonthToggle(m)}
-                    size="small"
-                  />
-                }
-                label={m}
-              />
-            ))}
-          </FormGroup>
+
+          {/* Compact month multi-select (chips) to reduce horizontal clutter */}
+          <FormControl sx={{ minWidth: 220 }} size="small">
+            <InputLabel id="month-select-label">Months</InputLabel>
+            <Select
+              labelId="month-select-label"
+              multiple
+              value={selectedMonths}
+              onChange={handleMonthSelectChange}
+              input={<OutlinedInput id="select-months-chip" label="Months" />}
+              renderValue={(selected) => (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {selected.map((value) => (
+                    <Chip key={value} label={value} size="small" />
+                  ))}
+                </Box>
+              )}
+            >
+              {months.map((m) => (
+                <MenuItem key={m} value={m}>
+                  <Checkbox checked={selectedMonths.indexOf(m) > -1} size="small" />
+                  {m}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </Box>
 
-          <Box sx={{ display: "flex", justifyContent: "space-around", mt: 3, flexWrap: "wrap" }}>
+          {/* Charts: use Grid with responsive columns so alignment stays correct */}
+          <Grid container spacing={2} sx={{ mt: 1, mb: 2, alignItems: 'stretch' }}>
             {/* Income Donut */}
-            <Box sx={{ width: "30%", minWidth: 280, height: 320 }}>
-              <Typography variant="subtitle1" align="center">Income (Credits)</Typography>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={inflowChartData}
-                    dataKey="percent"
-                    nameKey="category"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={70}
-                    outerRadius={120}
-                    labelLine={false}
-                    onClick={(data) => setDrillCategory(data.category)}
-                  >
-                    {inflowChartData.map((entry, index) => (
-                      <Cell key={`income-${index}`} fill={getColorForKey(entry.category)} />
-                    ))}
-                    <LabelList
-                      dataKey="percent"
-                      position="outside"
-                      formatter={(val, name) => `${name}: ${val}%`}
-                      style={{ fontSize: 12 }}
-                    />
-                  </Pie>
-                  <Tooltip formatter={(val, name) => `${name}: ${val}%`} />
-                </PieChart>
-              </ResponsiveContainer>
-            </Box>
+            <Grid item xs={12} md={4}>
+              <Paper sx={{ p: 1.5, height: '100%' }}>
+                <Typography variant="subtitle2" align="center">Income (Credits)</Typography>
+                <Box sx={{ width: '100%', height: CHART_HEIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {filtered.length === 0 ? (
+                    <Typography color="text.secondary" sx={{ textAlign: 'center' }}>No data for selected months</Typography>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={inflowChartData}
+                          dataKey="percent"
+                          nameKey="category"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={INNER_RADIUS}
+                          outerRadius={OUTER_RADIUS}
+                          labelLine={false}
+                          onClick={(entry) => entry && setDrillCategory(entry.category)}
+                          cursor="pointer"
+                        >
+                          {inflowChartData.map((entry, index) => (
+                            <Cell key={`income-${index}`} fill={getColorForKey(entry.category)} />
+                          ))}
+                          <LabelList
+                            dataKey="percent"
+                            position="outside"
+                            formatter={(val, name) => `${name}: ${val}%`}
+                            style={{ fontSize: LABEL_FONT_SIZE }}
+                          />
+                        </Pie>
+                        <Tooltip formatter={(val, name) => `${name}: ${val}%`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
+                </Box>
+              </Paper>
+            </Grid>
 
             {/* Expenses Donut */}
-            <Box sx={{ width: "30%", minWidth: 280, height: 320 }}>
-              <Typography variant="subtitle1" align="center">Expenses</Typography>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={expenseChartData}
-                    dataKey="percent"
-                    nameKey="category"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={70}
-                    outerRadius={120}
-                    labelLine={false}
-                    onClick={(data) => setDrillCategory(data.category)}
-                  >
-                    {expenseChartData.map((entry, index) => (
-                      <Cell key={`expense-${index}`} fill={getColorForKey(entry.category)} />
-                    ))}
-                    <LabelList
-                      dataKey="percent"
-                      position="outside"
-                      formatter={(val, name) => `${name}: ${val}%`}
-                      style={{ fontSize: 12 }}
-                    />
-                  </Pie>
-                  <Tooltip formatter={(val, name) => `${name}: ${val}%`} />
-                </PieChart>
-              </ResponsiveContainer>
-            </Box>
+            <Grid item xs={12} md={4}>
+              <Paper sx={{ p: 1.5, height: '100%' }}>
+                <Typography variant="subtitle2" align="center">Expenses</Typography>
+                <Box sx={{ width: '100%', height: CHART_HEIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {filtered.length === 0 ? (
+                    <Typography color="text.secondary" sx={{ textAlign: 'center' }}>No data for selected months</Typography>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={expenseChartData}
+                          dataKey="percent"
+                          nameKey="category"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={INNER_RADIUS}
+                          outerRadius={OUTER_RADIUS}
+                          labelLine={false}
+                          onClick={(entry) => entry && setDrillCategory(entry.category)}
+                          cursor="pointer"
+                        >
+                          {expenseChartData.map((entry, index) => (
+                            <Cell key={`expense-${index}`} fill={getColorForKey(entry.category)} />
+                          ))}
+                          <LabelList
+                            dataKey="percent"
+                            position="outside"
+                            formatter={(val, name) => `${name}: ${val}%`}
+                            style={{ fontSize: LABEL_FONT_SIZE }}
+                          />
+                        </Pie>
+                        <Tooltip formatter={(val, name) => `${name}: ${val}%`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
+                </Box>
+              </Paper>
+            </Grid>
 
             {/* Net Balance Donut */}
-            <Box sx={{ width: "30%", minWidth: 280, height: 320 }}>
-              <Typography variant="subtitle1" align="center">Net Balance</Typography>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={[
-                      { name: "Net Balance", value: netBalance },
-                      { name: "Spent", value: totalExpenses + totalInvestments },
-                    ]}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={70}
-                    outerRadius={120}
-                    labelLine={false}
-                  >
-                    <Cell fill={netBalance >= 0 ? "#9c27b0" : "#f44336"} />
-                    <Cell fill="#ccc" />
-                    <LabelList
-                      dataKey="value"
-                      position="outside"
-                      formatter={(val, name) => `${name}: ₹${formatIndianNumber(val)}`}
-                      style={{ fontSize: 12 }}
-                    />
-                  </Pie>
-                  <Tooltip formatter={(val, name) => `${name}: ₹${formatIndianNumber(val)}`} />
-                </PieChart>
-              </ResponsiveContainer>
-            </Box>
-          </Box>
-        )
+            <Grid item xs={12} md={4}>
+              <Paper sx={{ p: 1.5, height: '100%' }}>
+                <Typography variant="subtitle2" align="center">Net Balance</Typography>
+                <Box sx={{ width: '100%', height: CHART_HEIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {filtered.length === 0 ? (
+                    <Typography color="text.secondary" sx={{ textAlign: 'center' }}>No data for selected months</Typography>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { name: "Net Balance", value: netBalance },
+                            { name: "Spent", value: totalExpenses + totalInvestments },
+                          ]}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={INNER_RADIUS}
+                          outerRadius={OUTER_RADIUS}
+                          labelLine={false}
+                        >
+                          <Cell fill={netBalance >= 0 ? "#9c27b0" : "#f44336"} />
+                          <Cell fill="#ccc" />
+                          <LabelList
+                            dataKey="value"
+                            position="outside"
+                            formatter={(val, name) => `${name}: ₹${formatIndianNumber(val)}`}
+                            style={{ fontSize: LABEL_FONT_SIZE }}
+                          />
+                        </Pie>
+                        <Tooltip formatter={(val, name) => `${name}: ₹${formatIndianNumber(val)}`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
+                </Box>
+              </Paper>
+            </Grid>
+          </Grid>
 
         {/* Drill-down Subcategories */}
         {drillCategory && (
-          <Box sx={{ mt: 3 }}>
-            <Typography variant="subtitle1">Subcategories for {drillCategory}</Typography>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Subcategory</TableCell>
-                  {selectedMonths.length === 1 && <TableCell>Month</TableCell>}
-                  <TableCell>Amount (₹)</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {drillResult.map((t, idx) => (
-                  <TableRow
-                    key={idx}
-                    hover
-                    onClick={() => setDrillSubcategory(t.subcategory)}
-                    sx={{ cursor: "pointer" }}
-                  >
-                    <TableCell>{t.subcategory}</TableCell>
-                    {selectedMonths.length === 1 && <TableCell>{t.month}</TableCell>}
-                    <TableCell>₹{formatIndianNumber(Math.abs(t.totalAmount))}</TableCell>
+          <Box ref={drillRef} sx={{ mt: 2 }}>
+            <Paper sx={{ p: 2 }} elevation={2}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography variant="subtitle1">Subcategories for {drillCategory}</Typography>
+                <Button size="small" onClick={() => setDrillCategory(null)}>Clear</Button>
+              </Box>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Subcategory</TableCell>
+                    {selectedMonths.length === 1 && <TableCell>Month</TableCell>}
+                    <TableCell>Amount (₹)</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHead>
+                <TableBody>
+                  {drillResult.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3}>
+                        <Typography color="text.secondary">No subcategories available for the selected months.</Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    drillResult.map((t, idx) => (
+                      <TableRow
+                        key={idx}
+                        hover
+                        selected={drillSubcategory === t.subcategory}
+                        onClick={() => setDrillSubcategory(t.subcategory)}
+                        sx={{ cursor: "pointer" }}
+                      >
+                        <TableCell>{t.subcategory}</TableCell>
+                        {selectedMonths.length === 1 && <TableCell>{t.month}</TableCell>}
+                        <TableCell>₹{formatIndianNumber(Math.abs(t.totalAmount))}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </Paper>
           </Box>
         )}
 
 
+
       {/*  Drill-down Table */}
      {drillSubcategory && (
-       <Box sx={{ mt: 3 }}>
-         <Typography variant="h6" gutterBottom>
-           Transactions for {drillSubcategory}
-         </Typography>
-         <Table>
-           <TableHead>
-             <TableRow>
-               <TableCell>Category</TableCell>
-               <TableCell>Subcategory</TableCell>
-               <TableCell>Month</TableCell>
-               <TableCell>Amount (₹)</TableCell>
-               <TableCell>Type</TableCell>
-             </TableRow>
-           </TableHead>
-           <TableBody>
-             {transactions
-               .filter(
-                 (t) =>
-                   t.subcategory === drillSubcategory &&
-                   t.year === parseInt(selectedYear) &&
-                   selectedMonths.includes(t.month)
-               )
-               .map((t, idx) => (
-                 <TableRow key={idx}>
-                   <TableCell>{t.category}</TableCell>
-                   <TableCell>{t.subcategory}</TableCell>
-                   <TableCell>{t.month}</TableCell>
-                   <TableCell>{Math.abs(t.amount)}</TableCell>
-                   <TableCell>{t.txnType}</TableCell>
-                 </TableRow>
-               ))}
-           </TableBody>
+       <Box sx={{ mt: 2 }}>
+         <Paper sx={{ p: 2 }} elevation={1}>
+           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+             <Typography variant="h6">Transactions for {drillSubcategory}</Typography>
+             <Button size="small" variant="outlined" onClick={() => setDrillSubcategory(null)}>Clear Drill‑Down</Button>
+           </Box>
+           <Table size="small">
+             <TableHead>
+               <TableRow>
+                 <TableCell>Category</TableCell>
+                 <TableCell>Subcategory</TableCell>
+                 <TableCell>Month</TableCell>
+                 <TableCell>Amount (₹)</TableCell>
+                 <TableCell>Type</TableCell>
+               </TableRow>
+             </TableHead>
+             <TableBody>
+               {transactions
+                 .filter(
+                   (t) =>
+                     t.subcategory === drillSubcategory &&
+                     t.year === parseInt(selectedYear) &&
+                     (selectedMonths.length === 0 || selectedMonths.includes(t.month))
+                 )
+                 .reduce((acc, t) => { acc.push(t); return acc; }, [])
+                 .length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5}>
+                      <Typography color="text.secondary">No transactions available for this subcategory in the selected months.</Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  transactions
+                    .filter(
+                      (t) =>
+                        t.subcategory === drillSubcategory &&
+                        t.year === parseInt(selectedYear) &&
+                        (selectedMonths.length === 0 || selectedMonths.includes(t.month))
+                    )
+                    .map((t, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell>{t.category}</TableCell>
+                        <TableCell>{t.subcategory}</TableCell>
+                        <TableCell>{t.month}</TableCell>
+                        <TableCell>{Math.abs(t.amount)}</TableCell>
+                        <TableCell>{t.txnType}</TableCell>
+                      </TableRow>
+                    ))
+                )}
+             </TableBody>
          </Table>
-
-         {/* Clear Drill‑Down Button */}
-         <Box sx={{ mt: 2 }}>
-           <Button
-             variant="outlined"
-             color="secondary"
-             onClick={() => setDrillSubcategory(null)}
-           >
-             Clear Drill‑Down
-           </Button>
-         </Box>
+         </Paper>
        </Box>
      )}
+
+
     </Card>
   );
+
 }

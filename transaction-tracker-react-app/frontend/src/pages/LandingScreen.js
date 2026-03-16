@@ -1,23 +1,27 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Box,
   Typography,
   Button,
   Paper,
   Grid,
-  Divider
+  Divider,
+  IconButton
 } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import HistoryIcon from "@mui/icons-material/History";
+import SettingsIcon from "@mui/icons-material/Settings";
 import LoadingOverlay from "../components/LoadingOverlay";
 import { uploadTransactions } from "../api/transactionsApi";
 import UploadFileIcon from '@mui/icons-material/UploadFile';
+import CategorySettingsDialog from "../components/dialogs/CategorySettingsDialog";
 
 export default function LandingScreen({ onViewTransactionsClick,
             onLoadingChange,
             onDataChange,
             onActiveScreen}) {
   const userName = localStorage.getItem("loggedInUser");
+  const [openCategorySettings, setOpenCategorySettings] = useState(false);
 
 const onUploadClick = async (event) => {
       const uploadedFile = event.target.files[0];
@@ -46,13 +50,35 @@ const onUploadClick = async (event) => {
   <>
 
     <Box sx={{ p: 3, backgroundColor: "#f2f3f3", minHeight: "100vh" }}>
-      {/* Header */}
-      <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
-        Welcome back, {userName}
-      </Typography>
-      <Typography variant="body2" sx={{ color: "text.secondary", mb: 3 }}>
-        Manage your finances with clarity and control.
-      </Typography>
+      {/* Header with Settings Icon */}
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
+            Welcome back, {userName}
+          </Typography>
+          <Typography variant="body2" sx={{ color: "text.secondary" }}>
+            Manage your finances with clarity and control.
+          </Typography>
+        </Box>
+        <IconButton
+          onClick={() => setOpenCategorySettings(true)}
+          sx={{
+            backgroundColor: "#fff",
+            border: "1px solid #d5dbdb",
+            borderRadius: "50%",
+            width: 44,
+            height: 44,
+            "&:hover": {
+              backgroundColor: "#f5f5f5",
+              borderColor: "primary.main",
+              color: "primary.main"
+            }
+          }}
+          title="Category Settings"
+        >
+          <SettingsIcon />
+        </IconButton>
+      </Box>
 
       <Divider sx={{ mb: 3 }} />
 
@@ -166,6 +192,11 @@ const onUploadClick = async (event) => {
         </Grid>
       </Box>
     </Box>
+
+    <CategorySettingsDialog
+      open={openCategorySettings}
+      setOpen={setOpenCategorySettings}
+    />
     </>
   );
 }
