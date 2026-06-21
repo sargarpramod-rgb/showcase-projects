@@ -1,18 +1,5 @@
-# --- Providers ---
-# Default provider for eu-north-1 (S3 bucket, ALB, etc.)
-provider "aws" {
-  region = "eu-north-1"
-}
-
-# Additional provider for us-east-1 (CloudFront + ACM certificate)
-provider "aws" {
-  alias  = "us_east_1"
-  region = "us-east-1"
-}
-
 # --- S3 Bucket in eu-north-1 ---
 resource "aws_s3_bucket" "react_app" {
-  provider = aws
   bucket   = "transaction-tracker-react-app-pramod-2026" # must be globally unique
   acl      = "private"
 
@@ -29,7 +16,6 @@ resource "aws_cloudfront_origin_access_identity" "oai" {
 
 # Attach bucket policy so only CloudFront OAI can read objects
 resource "aws_s3_bucket_policy" "react_app_policy" {
-  provider = aws
   bucket   = aws_s3_bucket.react_app.id
 
   policy = <<POLICY
