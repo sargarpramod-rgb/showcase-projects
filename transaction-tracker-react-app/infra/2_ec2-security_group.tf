@@ -1,7 +1,3 @@
-provider "aws" {
-  region = "eu-north-1"  
-}
-
 resource "aws_security_group" "launch_wizard_1" {
   name        = "launch-wizard-1"   
   description = "launch-wizard-1 created 2026-01-01T12:24:51.899Z"
