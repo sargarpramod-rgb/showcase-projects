@@ -248,17 +248,16 @@ create_ec2_instance() {
     log_info "Creating EC2 Instance..."
     
     EC2_INSTANCE_ID=$(aws ec2 run-instances \
-        --image-id "$AMI_ID" \
-        --instance-type t3.micro \
-        --subnet-id "$SUBNET_ID" \
-        --security-group-ids "$EC2_SG_ID" \
-        --iam-instance-profile "Arn=$INSTANCE_PROFILE_ARN" \
-        --availability-zone "${AWS_REGION}a" \
-        --block-device-mappings "DeviceName=/dev/xvda,Ebs={VolumeSize=8,VolumeType=gp3,DeleteOnTermination=true}" \
-        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=WheresMyMoneyApp},{Key=Environment,Value=$ENVIRONMENT}]" \
-        --region "$AWS_REGION" \
-        --query 'Instances[0].InstanceId' \
-        --output text)
+  --image-id ami-0517aaaee33d8b971 \
+  --instance-type t3.micro \
+  --subnet-id subnet-008f0c5b183f1116a \
+  --security-group-ids sg-00e7529dde0e40b0d \
+  --iam-instance-profile Arn=arn:aws:iam::316502580034:instance-profile/EC2SecretsProfile-1782076503 \
+  --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=8,VolumeType=gp3,DeleteOnTermination=true}' \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=WheresMyMoneyApp},{Key=Environment,Value=PROD}]' \
+  --region us-east-1 \
+  --query 'Instances[0].InstanceId' \
+  --output text)
     
     log_success "EC2 Instance created: $EC2_INSTANCE_ID"
     
