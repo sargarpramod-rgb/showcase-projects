@@ -9,7 +9,7 @@ JAR_NAME="target/transaction-tracker-backend-0.0.1-SNAPSHOT.jar"
 LOG_FILE="app.log"
 
 # -----------------------------
-# Install dependencies
+# Install dependencies, use Java17
 # -----------------------------
 echo "📦 Installing dependencies..."
 
@@ -68,7 +68,7 @@ pkill -f $APP_NAME || true
 # -----------------------------
 echo "▶️ Starting application..."
 
-nohup java -jar $JAR_NAME > $LOG_FILE 2>&1 &
+nohup java -jar $JAR_NAME --spring.profiles.active=prod > $LOG_FILE 2>&1 &
 
 sleep 5
 
