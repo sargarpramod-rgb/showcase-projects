@@ -22,6 +22,9 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
     @Autowired
     private JwtService jwtService;
 
+    @Autowired
+    private CookieService cookieService;
+
     @Override
     public void onAuthenticationSuccess(
             HttpServletRequest request,
@@ -29,20 +32,29 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
             Authentication authentication
     ) throws IOException {
 
-
-
         OAuth2User oauthUser = (OAuth2User) authentication.getPrincipal();
         String email = oauthUser.getAttribute("email");
-        String name = oauthUser.getAttribute("name"); // Google provides this
+        String name  = oauthUser.getAttribute("name");
 
         log.info("OAuth success for email={}, name={}", email, name);
 
-        String jwt = jwtService.generateToken(1234l, email);
-        String encodedJwt = URLEncoder.encode(jwt, StandardCharsets.UTF_8);
-        String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8);
+        // TODO: replace 1234L with real userId lookup from your DB
+        Long userId = 1234L;
 
-        response.sendRedirect(
-                frontendUrl+"/login-success?token=" + encodedJwt + "&name=" + encodedName
-        );
+        // Generate both tokens
+        String accessToken  = jwtService.generateToken(userId, email);
+        String refreshToken = jwtService.generateRefreshToken(userId, email);
+
+        // Set as HttpOnly cookies — never expose in URL or response body
+        cookieService.setAccessTokenCookie(response, accessToken, 15 * 60);           // 15 min
+        cookieService.setRefreshTokenCookie(response, refreshToken, 7 * 24 * 60 * 60); // 7 days
+
+        // Only send non-sensitive display info in the URL
+        String encodedName = URLEncoder.encode(name != null ? name : "", StandardCharsets.UTF_8);
+
+        log.info("Tokens set as HttpOnly cookies, redirecting to frontend for email={}", email);
+
+        // Redirect without token in URL — cookies are sent automatically by browser
+        response.sendRedirect(frontendUrl + "/login-success?name=" + encodedName);
     }
 }

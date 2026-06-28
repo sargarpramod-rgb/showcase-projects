@@ -14,6 +14,7 @@ import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SummaryView from "./SummaryView"
 import config from "../config";
+import { uploadTransactions } from "../api/transactionsApi";
 
 export default function UploadView({onFileChange, onLoadingChange,
 onDataChange,handleOpenChartDialog,aggregatedData,
@@ -33,21 +34,7 @@ const handleFileUpload = async (event) => {
       formData.append("file", uploadedFile);
 
       try {
-        const jwt = localStorage.getItem("jwt");
-
-        const response = await fetch(`${config.API_BASE}/api/upload-transaction-file`, {
-          method: "POST",
-          headers: {
-                                'Authorization': `Bearer ${jwt}`
-                            },
-          body: formData,
-        });
-
-        if (!response.ok) {
-          throw new Error("File upload failed");
-        }
-
-        const result = await response.json();
+        const result = await uploadTransactions(uploadedFile);
 
         // bubble up data to App.js
         onDataChange(result);
