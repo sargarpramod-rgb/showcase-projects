@@ -16,14 +16,17 @@ import java.nio.charset.StandardCharsets;
 @Log4j2
 public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
 
-    @Value("${frontend.url}")
     private String frontendUrl;
 
-    @Autowired
     private JwtService jwtService;
 
-    @Autowired
     private CookieService cookieService;
+
+    public OAuthSuccessHandler(String frontendUrl, JwtService jwtService, CookieService cookieService) {
+        this.frontendUrl = frontendUrl;
+        this.jwtService = jwtService;
+        this.cookieService = cookieService;
+    }
 
     @Override
     public void onAuthenticationSuccess(

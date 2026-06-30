@@ -4,6 +4,7 @@ import com.transaction.security.CookieService;
 import com.transaction.security.JwtService;
 import com.transaction.security.OAuthSuccessHandler;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -99,8 +100,12 @@ public class SecurityConfig {
         return source;
     }
 
+
+
     @Bean
-    AuthenticationSuccessHandler oAuthSuccessHandler() {
-        return new OAuthSuccessHandler();
+    AuthenticationSuccessHandler oAuthSuccessHandler(@Value("${frontend.url}") String frontendUrl,
+                                                     JwtService jwtService,
+                                                     CookieService cookieService) {
+        return new OAuthSuccessHandler(frontendUrl, jwtService, cookieService);
     }
 }
