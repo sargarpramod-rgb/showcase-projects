@@ -2,9 +2,11 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 const HomeRedirect = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
 
-  return isAuthenticated || localStorage.getItem("jwt")
+  if (loading) return null; // wait for /auth/verify before redirecting
+
+  return isAuthenticated
     ? <Navigate to="/dashboard" replace />
     : <Navigate to="/login" replace />;
 };

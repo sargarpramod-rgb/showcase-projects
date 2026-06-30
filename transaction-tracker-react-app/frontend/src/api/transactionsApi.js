@@ -1,119 +1,78 @@
 import config from "../config/config";
 
-export const saveTransactions = async (aggregatedData) => {
-  const jwt = localStorage.getItem("jwt");
+// Shared fetch wrapper — cookies sent automatically via credentials: "include"
+const apiFetch = async (url, options = {}) => {
+  const isFormData = options.body instanceof FormData;
 
-  const response = await fetch(`${config.API_BASE}/api/save-transactions`, {
-    method: "POST",
+  const response = await fetch(`${config.API_BASE}${url}`, {
+    ...options,
+    credentials: "include",
     headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${jwt}`
+      // Skip Content-Type for FormData — browser sets multipart/form-data + boundary automatically
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...options.headers,
     },
-    body: JSON.stringify(aggregatedData, null, 2)
   });
 
-  if (!response.ok) {
-    throw new Error("Error in data save");
+  if (response.status === 401) {
+    window.location.href = "/login";
+    throw new Error("Session expired. Please log in again.");
   }
 
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.statusText}`);
+  }
+
+  return response;
+};
+
+export const saveTransactions = async (aggregatedData) => {
+  const response = await apiFetch("/api/save-transactions", {
+    method: "POST",
+    body: JSON.stringify(aggregatedData, null, 2),
+  });
   return response.text();
 };
 
 export const fetchPreviousTransactions = async () => {
-  const jwt = localStorage.getItem("jwt");
-   const response = await fetch(`${config.API_BASE}/api/transactions-summary-by/2025`, {
-                    method: "GET",
-                    headers: {
-                      "Authorization": `Bearer ${jwt}`,   // Attach JWT here
-                      "Content-Type": "application/json"
-                    }
-                  })
-  if (!response.ok) throw new Error("Error fetching transactions");
+  const response = await apiFetch("/api/transactions-summary-by/2025");
   return response.json();
 };
 
 export const fetchTransactionCategories = async () => {
-  const jwt = localStorage.getItem("jwt");
-  const response = await fetch(`${config.API_BASE}/api/transaction-categories`, {
-           method: "GET",
-           headers: {
-             "Authorization": `Bearer ${jwt}`,   // Attach JWT here
-             "Content-Type": "application/json"
-           }
-         })
-  if (!response.ok) throw new Error("Error fetching transactions");
+  const response = await apiFetch("/api/transaction-categories");
   return response.json();
 };
 
 export const uploadTransactions = async (uploadedFile) => {
   const formData = new FormData();
   formData.append("file", uploadedFile);
-  const jwt = localStorage.getItem("jwt");
-  console.log('config.API_BASE')
-  console.log(config.API_BASE)
-   const response = await fetch(`${config.API_BASE}/api/upload-transaction-file`, {
-            method: "POST",
-            headers: {
-                                  'Authorization': `Bearer ${jwt}`
-                              },
-            body: formData,
-          });
-  if (!response.ok) throw new Error("File upload failed");
+
+  const response = await apiFetch("/api/upload-transaction-file", {
+    method: "POST",
+    body: formData,  // apiFetch auto-detects FormData and skips Content-Type
+  });
   return response.json();
 };
 
+
 export const saveTransactionCategories = async (categories) => {
-  const jwt = localStorage.getItem("jwt");
-
-  const response = await fetch(`${config.API_BASE}/api/transaction-categories`, {
+  const response = await apiFetch("/api/transaction-categories", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${jwt}`
-    },
-    body: JSON.stringify(categories)
+    body: JSON.stringify(categories),
   });
-
-  if (!response.ok) {
-    throw new Error("Error saving categories");
-  }
-
   return response.json();
 };
 
 export const fetchSubcategories = async (category) => {
-  const jwt = localStorage.getItem("jwt");
-
-  const response = await fetch(`${config.API_BASE}/api/subcategories/${encodeURIComponent(category)}`, {
-    method: "GET",
-    headers: {
-      "Authorization": `Bearer ${jwt}`,
-      "Content-Type": "application/json"
-    }
-  });
-
-  if (!response.ok) {
-    throw new Error("Error fetching subcategories");
-  }
-
+  const response = await apiFetch(`/api/subcategories/${encodeURIComponent(category)}`);
   return response.json();
 };
 
 export const saveSubcategories = async (category, subcategories) => {
-  const jwt = localStorage.getItem("jwt");
-
-  const response = await fetch(`${config.API_BASE}/api/subcategories/${encodeURIComponent(category)}`, {
+  const response = await apiFetch(`/api/subcategories/${encodeURIComponent(category)}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${jwt}`
-    },
-    body: JSON.stringify(subcategories)
+    body: JSON.stringify(subcategories),
   });
-
-  if (!response.ok) {
-    throw new Error("Error saving subcategories");
-  }
-
   return response.json();
 };
