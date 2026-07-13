@@ -378,6 +378,8 @@ public class HdfcBankStatementParser implements BankStatementParser {
                     pendingDate = parsedDate;
                     pendingNarration = row.narrationText.substring(0,row.narrationText.length() - 17);
 
+                    // This is because withdrawl text is having value date. e.g. 01/06/26 15,538.00
+                    row.withdrawalText = row.withdrawalText.substring(9);
 
                     if (!row.withdrawalText.isEmpty()) {
                         pendingAmount = safeParseAmount(row.withdrawalText).negate();
