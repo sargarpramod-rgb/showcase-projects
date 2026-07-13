@@ -42,7 +42,7 @@ public class HdfcBankStatementParser implements BankStatementParser {
 
     private static final String STATEMENT_LINE_ANCHOR = "Statement of account";
     private static final String COLUMN_HEADER_ANCHOR   = "Withdrawal Amt";
-    private static final String FOOTER_ANCHOR          = "Closing balance includes funds earmarked";
+    private static final String FOOTER_ANCHOR          = "HDFC BANK LIMITED";
 
     @Override
     public boolean canParse(String plainTextSample) {
@@ -657,7 +657,7 @@ public class HdfcBankStatementParser implements BankStatementParser {
                         log.warn("Row dated {} has neither withdrawal nor deposit — defaulting to 0", parsedDate);
                         pendingAmount = BigDecimal.ZERO;
                     }
-                } else if (pendingDate != null && !row.narrationText.isEmpty()) {
+                } else if (pendingDate != null && !row.narrationText.isEmpty() && !row.narrationText.equalsIgnoreCase(FOOTER_ANCHOR)) {
                     // Wrapped narration continuation — same transaction, no new date on this line.
                     pendingNarration = (pendingNarration == null || pendingNarration.isEmpty())
                             ? row.narrationText
