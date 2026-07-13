@@ -19,6 +19,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -29,16 +30,12 @@ public class HdfcBankStatementParser implements BankStatementParser {
 
     private static final Logger log = LoggerFactory.getLogger(HdfcBankStatementParser.class);
 
-    // --- Column X-boundaries ---
-    // TODO: verify/replace using PdfColumnDiagnostic against your real HDFC PDF.
-    private static final float DATE_X_START  = 30,  DATE_X_END  = 60;
-    private static final float NARR_X_START  = 70,  NARR_X_END  = 360;
-    private static final float WITH_X_START  = 480, WITH_X_END  = 530;
-    private static final float DEP_X_START   = 530, DEP_X_END   = 600;
-    private static final float BAL_X_START   = 600, BAL_X_END   = 680;
-
     // How close in Y two text runs need to be to be considered "the same visual row".
     private static final float ROW_Y_TOLERANCE = 3.0f;
+
+    // Extra vertical slack used only when scanning the header line itself, since the Y we
+    // locate it at (see findTextY) already carries a small +2 buffer past the line.
+    private static final float HEADER_Y_TOLERANCE = 6.0f;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yy");
     private static final Pattern DATE_PATTERN = Pattern.compile("\\d{2}/\\d{2}/\\d{2}");
@@ -66,6 +63,12 @@ public class HdfcBankStatementParser implements BankStatementParser {
         // (or at the very end of the document).
         TransactionAccumulator accumulator = new TransactionAccumulator();
 
+        // Column boundaries are detected fresh from each page's own header row where one
+        // exists (page 1, and any later page that happens to repeat the header). Pages
+        // without a header (typical continuation pages) reuse whatever layout was most
+        // recently detected, since HDFC keeps column positions constant across a statement.
+        ColumnBoundaries lastKnownBoundaries = null;
+
         for (int pageIndex = 0; pageIndex < pages.size(); pageIndex++) {
             PDPage page = pages.get(pageIndex);
 
@@ -87,7 +90,18 @@ public class HdfcBankStatementParser implements BankStatementParser {
                 continue;
             }
 
-            RowExtractor extractor = new RowExtractor(tableStartY, tableEndY);
+            ColumnBoundaries boundaries;
+            if (columnHeaderY > 0) {
+                boundaries = detectColumnBoundaries(document, pageIndex, columnHeaderY);
+                lastKnownBoundaries = boundaries;
+            } else if (lastKnownBoundaries != null) {
+                boundaries = lastKnownBoundaries;
+            } else {
+                log.warn("Page {} has no header row and no previously detected layout — falling back to default column coordinates", pageIndex + 1);
+                boundaries = DEFAULT_COLUMN_BOUNDARIES;
+            }
+
+            RowExtractor extractor = new RowExtractor(tableStartY, tableEndY, boundaries);
             extractor.setStartPage(pageIndex + 1);
             extractor.setEndPage(pageIndex + 1);
             extractor.getText(document);
@@ -159,41 +173,197 @@ public class HdfcBankStatementParser implements BankStatementParser {
         }
     }
 
-    // ---------- column classification ----------
+    // ---------- column model ----------
 
-    private enum Column { DATE, NARRATION, WITHDRAWAL, DEPOSIT, BALANCE }
+    private enum Column { DATE, NARRATION, REF_NO, VALUE_DATE, WITHDRAWAL, DEPOSIT, BALANCE }
+
+    // Expected header label text for each column, in left-to-right reading order. Matching is
+    // done against a normalized (alphanumeric-only, lowercased) form, so minor differences in
+    // spacing or punctuation extraction ("Chq./Ref.No." vs "Chq. / Ref. No.") don't matter.
+    private static final Map<Column, String> HEADER_LABELS = new LinkedHashMap<>();
+    static {
+        HEADER_LABELS.put(Column.DATE, "Date");
+        HEADER_LABELS.put(Column.NARRATION, "Narration");
+        HEADER_LABELS.put(Column.REF_NO, "Chq./Ref.No.");
+        HEADER_LABELS.put(Column.VALUE_DATE, "Value Dt");
+        HEADER_LABELS.put(Column.WITHDRAWAL, "Withdrawal Amt.");
+        HEADER_LABELS.put(Column.DEPOSIT, "Deposit Amt.");
+        HEADER_LABELS.put(Column.BALANCE, "Closing Balance");
+    }
+
+    // Legacy fixed coordinates, kept ONLY as a last-resort fallback for the rare page where a
+    // header row can't be located at all (e.g. a damaged or non-standard PDF). Whenever a
+    // header row is available, detectColumnBoundaries() below computes real boundaries from it
+    // instead — this fallback doesn't know about REF_NO/VALUE_DATE since the original layout
+    // it came from never separated them out.
+    private static final ColumnBoundaries DEFAULT_COLUMN_BOUNDARIES = buildDefaultBoundaries();
+
+    private static ColumnBoundaries buildDefaultBoundaries() {
+        List<Column> order = List.of(Column.DATE, Column.NARRATION, Column.WITHDRAWAL, Column.DEPOSIT, Column.BALANCE);
+        List<float[]> ranges = List.of(
+                new float[]{0, 60},
+                new float[]{60, 480},
+                new float[]{480, 530},
+                new float[]{530, 600},
+                new float[]{600, Float.MAX_VALUE}
+        );
+        return ColumnBoundaries.fromOrderedRanges(order, ranges);
+    }
+
+    private static String normalize(String s) {
+        return s.replaceAll("[^A-Za-z0-9]", "").toLowerCase();
+    }
 
     /**
-     * Classifies an X coordinate into one of the five table columns. Falls back to the
-     * nearest column (by center distance) if the text slightly overshoots the configured
-     * boundaries, since real PDFs rarely line up to the pixel with the TODO'd constants above.
+     * Scans the header row at {@code headerY} on the given page, matches each expected column
+     * label to the token(s) that spell it out, and derives column boundaries as the midpoints
+     * between adjacent matched labels. This replaces hand-measured X coordinates with values
+     * read straight off the actual PDF, so the parser adapts automatically to statements whose
+     * margins or column widths differ slightly (different HDFC branches/export tools, etc.).
      */
-    private static Column classify(float x) {
-        if (x >= DATE_X_START && x < DATE_X_END) return Column.DATE;
-        if (x >= NARR_X_START && x < NARR_X_END) return Column.NARRATION;
-        if (x >= WITH_X_START && x < WITH_X_END) return Column.WITHDRAWAL;
-        if (x >= DEP_X_START && x < DEP_X_END) return Column.DEPOSIT;
-        if (x >= BAL_X_START && x < BAL_X_END) return Column.BALANCE;
+    private ColumnBoundaries detectColumnBoundaries(PDDocument document, int pageIndex, float headerY) throws IOException {
+        HeaderColumnFinder finder = new HeaderColumnFinder(headerY, HEADER_Y_TOLERANCE);
+        finder.setStartPage(pageIndex + 1);
+        finder.setEndPage(pageIndex + 1);
+        finder.getText(document);
 
-        float[][] ranges = {
-                {DATE_X_START, DATE_X_END},
-                {NARR_X_START, NARR_X_END},
-                {WITH_X_START, WITH_X_END},
-                {DEP_X_START, DEP_X_END},
-                {BAL_X_START, BAL_X_END}
-        };
-        Column[] cols = {Column.DATE, Column.NARRATION, Column.WITHDRAWAL, Column.DEPOSIT, Column.BALANCE};
-        Column best = Column.NARRATION;
-        float bestDist = Float.MAX_VALUE;
-        for (int i = 0; i < ranges.length; i++) {
-            float center = (ranges[i][0] + ranges[i][1]) / 2f;
-            float dist = Math.abs(x - center);
-            if (dist < bestDist) {
-                bestDist = dist;
-                best = cols[i];
+        List<Token> headerTokens = TokenUtil.groupByGap(finder.headerChars());
+        headerTokens.sort(Comparator.comparing(Token::minX));
+
+        List<Column> order = new ArrayList<>(HEADER_LABELS.keySet());
+        List<float[]> spans = new ArrayList<>();
+        int tokenIdx = 0;
+
+        for (Column col : order) {
+            String targetNorm = normalize(HEADER_LABELS.get(col));
+            int startIdx = tokenIdx;
+            String acc = "";
+            float minX = Float.MAX_VALUE, maxX = -Float.MAX_VALUE;
+
+            while (tokenIdx < headerTokens.size()) {
+                Token t = headerTokens.get(tokenIdx);
+                String tn = normalize(t.text());
+                if (tn.isEmpty()) {
+                    tokenIdx++;
+                    continue;
+                }
+                String attempt = acc + tn;
+                if (!targetNorm.startsWith(attempt) && !attempt.startsWith(targetNorm)) {
+                    break;
+                }
+                acc = attempt;
+                minX = Math.min(minX, t.minX());
+                maxX = Math.max(maxX, t.maxX());
+                tokenIdx++;
+                if (acc.equals(targetNorm)) {
+                    break;
+                }
+            }
+
+            if (acc.equals(targetNorm)) {
+                spans.add(new float[]{minX, maxX});
+            } else {
+                tokenIdx = startIdx; // don't consume tokens on a failed match
+                spans.add(null);
             }
         }
-        return best;
+
+        boolean allMatched = spans.stream().noneMatch(java.util.Objects::isNull);
+        if (!allMatched) {
+            log.warn("Page {}: could not locate all column headers dynamically — falling back to default coordinates", pageIndex + 1);
+            return DEFAULT_COLUMN_BOUNDARIES;
+        }
+
+        List<float[]> ranges = new ArrayList<>();
+        for (int i = 0; i < order.size(); i++) {
+            float start = (i == 0) ? 0f : (spans.get(i - 1)[1] + spans.get(i)[0]) / 2f;
+            float end = (i == order.size() - 1) ? Float.MAX_VALUE : (spans.get(i)[1] + spans.get(i + 1)[0]) / 2f;
+            ranges.add(new float[]{start, end});
+        }
+        return ColumnBoundaries.fromOrderedRanges(order, ranges);
+    }
+
+    /** Captures only the characters sitting on the header row's Y so they can be tokenized separately. */
+    private static class HeaderColumnFinder extends PDFTextStripper {
+        private final float targetY;
+        private final float yTolerance;
+        private final List<TextPosition> headerChars = new ArrayList<>();
+
+        HeaderColumnFinder(float targetY, float yTolerance) throws IOException {
+            this.targetY = targetY;
+            this.yTolerance = yTolerance;
+            setSortByPosition(true);
+        }
+
+        @Override
+        protected void writeString(String text, List<TextPosition> positions) throws IOException {
+            for (TextPosition tp : positions) {
+                if (Math.abs(tp.getYDirAdj() - targetY) <= yTolerance) {
+                    headerChars.add(tp);
+                }
+            }
+            super.writeString(text, positions);
+        }
+
+        List<TextPosition> headerChars() {
+            headerChars.sort(Comparator.comparing(TextPosition::getXDirAdj));
+            return headerChars;
+        }
+    }
+
+    /**
+     * Holds the resolved [start, end) X-range for every column on a given page, plus the flat
+     * list of boundary edges used to force token breaks. Two pages of the same statement can
+     * have their own instance if their headers were detected independently, though in practice
+     * continuation pages just reuse the one from the last page that had a header.
+     */
+    private static final class ColumnBoundaries {
+        private final Map<Column, float[]> ranges;
+        private final float[] edges;
+
+        private ColumnBoundaries(Map<Column, float[]> ranges, float[] edges) {
+            this.ranges = ranges;
+            this.edges = edges;
+        }
+
+        static ColumnBoundaries fromOrderedRanges(List<Column> order, List<float[]> startEndPairs) {
+            Map<Column, float[]> ranges = new EnumMap<>(Column.class);
+            for (int i = 0; i < order.size(); i++) {
+                ranges.put(order.get(i), startEndPairs.get(i));
+            }
+            float[] edges = new float[Math.max(0, order.size() - 1)];
+            for (int i = 0; i < edges.length; i++) {
+                edges[i] = startEndPairs.get(i)[1];
+            }
+            return new ColumnBoundaries(ranges, edges);
+        }
+
+        Column classify(float x) {
+            for (Map.Entry<Column, float[]> e : ranges.entrySet()) {
+                float[] r = e.getValue();
+                if (x >= r[0] && x < r[1]) {
+                    return e.getKey();
+                }
+            }
+            // Fallback: nearest column by center distance, for text that slightly overshoots
+            // its column (real PDFs rarely line up to the pixel).
+            Column best = Column.NARRATION;
+            float bestDist = Float.MAX_VALUE;
+            for (Map.Entry<Column, float[]> e : ranges.entrySet()) {
+                float[] r = e.getValue();
+                float center = (r[1] == Float.MAX_VALUE) ? r[0] : (r[0] + r[1]) / 2f;
+                float dist = Math.abs(x - center);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = e.getKey();
+                }
+            }
+            return best;
+        }
+
+        float[] edges() {
+            return edges;
+        }
     }
 
     // ---------- horizontal row model ----------
@@ -217,6 +387,14 @@ public class HdfcBankStatementParser implements BankStatementParser {
             maxX = Math.max(maxX, endX);
         }
 
+        float minX() {
+            return minX;
+        }
+
+        float maxX() {
+            return maxX;
+        }
+
         float centerX() {
             return (minX + maxX) / 2f;
         }
@@ -226,51 +404,12 @@ public class HdfcBankStatementParser implements BankStatementParser {
         }
     }
 
-    /** One visual row on the page, holding the raw characters captured at that Y until tokenized. */
-    private static class Row {
-        final float y;
-        final List<TextPosition> chars = new ArrayList<>();
+    /** Turns a Y-sorted run of characters into tokens. */
+    private static final class TokenUtil {
+        private TokenUtil() {}
 
-        String dateText = "", narrationText = "", withdrawalText = "", depositText = "", balanceText = "";
-
-        Row(float y) {
-            this.y = y;
-        }
-
-        void add(TextPosition tp) {
-            chars.add(tp);
-        }
-
-        void finalizeRow() {
-            chars.sort(Comparator.comparing(TextPosition::getXDirAdj));
-
-            List<Token> tokens = groupIntoTokens(chars);
-
-            Map<Column, StringBuilder> byColumn = new EnumMap<>(Column.class);
-            for (Column c : Column.values()) {
-                byColumn.put(c, new StringBuilder());
-            }
-
-            // Each token is assigned to exactly ONE column, based on the token's horizontal
-            // center. A blank column simply gets no tokens — it can no longer "steal"
-            // characters from a neighbor, because tokens are never split mid-word/mid-number.
-            for (Token t : tokens) {
-                Column col = classify(t.centerX());
-                StringBuilder sb = byColumn.get(col);
-                if (sb.length() > 0) {
-                    sb.append(' ');
-                }
-                sb.append(t.text());
-            }
-
-            dateText = byColumn.get(Column.DATE).toString().trim();
-            narrationText = byColumn.get(Column.NARRATION).toString().trim();
-            withdrawalText = byColumn.get(Column.WITHDRAWAL).toString().trim();
-            depositText = byColumn.get(Column.DEPOSIT).toString().trim();
-            balanceText = byColumn.get(Column.BALANCE).toString().trim();
-        }
-
-        private static List<Token> groupIntoTokens(List<TextPosition> sortedChars) {
+        /** Pure gap-based tokenizing — used for the header row, before any boundaries exist. */
+        static List<Token> groupByGap(List<TextPosition> sortedChars) {
             List<Token> tokens = new ArrayList<>();
             Token current = null;
             Float prevEndX = null;
@@ -289,21 +428,151 @@ public class HdfcBankStatementParser implements BankStatementParser {
             }
             return tokens;
         }
+
+        /**
+         * Same as {@link #groupByGap}, but additionally forces a token break wherever two
+         * adjacent characters straddle one of the given column boundaries — even with zero
+         * visual gap between them. Without this, a narration that starts flush against the end
+         * of the date column (no rendered whitespace in between) would get glued onto the date
+         * into a single token, which then gets classified — date digits and all — into whatever
+         * column its combined center falls in.
+         */
+        static List<Token> groupByGapAndBoundaries(List<TextPosition> sortedChars, float[] boundaries) {
+            List<Token> tokens = new ArrayList<>();
+            Token current = null;
+            Float prevEndX = null;
+
+            for (TextPosition tp : sortedChars) {
+                float x = tp.getXDirAdj();
+                float gapThreshold = Math.max(tp.getWidthDirAdj(), 2f) * 1.5f;
+                boolean gapBreak = current == null || prevEndX == null || (x - prevEndX) > gapThreshold;
+                boolean boundaryBreak = prevEndX != null && crossesBoundary(prevEndX, x, boundaries);
+
+                if (gapBreak || boundaryBreak) {
+                    current = new Token();
+                    tokens.add(current);
+                }
+                current.add(tp);
+                prevEndX = x + tp.getWidthDirAdj();
+            }
+            return tokens;
+        }
+
+        private static boolean crossesBoundary(float prevEndX, float x, float[] boundaries) {
+            for (float b : boundaries) {
+                if (prevEndX < b && x >= b) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    /** One visual row on the page, holding the raw characters captured at that Y until tokenized. */
+    private static class Row {
+        final float y;
+        final List<TextPosition> chars = new ArrayList<>();
+
+        String dateText = "", narrationText = "", refNoText = "", valueDateText = "",
+                withdrawalText = "", depositText = "", balanceText = "";
+
+        Row(float y) {
+            this.y = y;
+        }
+
+        void add(TextPosition tp) {
+            chars.add(tp);
+        }
+
+        void finalizeRow(ColumnBoundaries boundaries) {
+            chars.sort(Comparator.comparing(TextPosition::getXDirAdj));
+
+            // The DATE/NARRATION boundary comes from where the header words "Date" and
+            // "Narration" sit — but a given row's narration text doesn't always start exactly
+            // there, and when it starts flush against the date with no rendered gap, trusting
+            // that boundary alone can pull the date's own digits into narration. A date's
+            // shape (dd/mm/yy) is unambiguous, so instead we look for it directly at the start
+            // of the row's character stream and split right after the matched digits — the
+            // column boundary is only used for everything to the right of that point.
+            int dateEndCharIndex = findLeadingDateEndIndex(chars);
+
+            List<TextPosition> dateChars = dateEndCharIndex > 0
+                    ? chars.subList(0, dateEndCharIndex)
+                    : List.of();
+            List<TextPosition> remainingChars = dateEndCharIndex > 0
+                    ? chars.subList(dateEndCharIndex, chars.size())
+                    : chars;
+
+            StringBuilder dateBuf = new StringBuilder();
+            for (TextPosition tp : dateChars) {
+                dateBuf.append(tp.getUnicode());
+            }
+            dateText = dateBuf.toString().trim();
+
+            List<Token> tokens = TokenUtil.groupByGapAndBoundaries(remainingChars, boundaries.edges());
+
+            Map<Column, StringBuilder> byColumn = new EnumMap<>(Column.class);
+            for (Column c : Column.values()) {
+                byColumn.put(c, new StringBuilder());
+            }
+
+            // Each token is assigned to exactly ONE column, based on the token's horizontal
+            // center. A blank column simply gets no tokens — it can no longer "steal"
+            // characters from a neighbor, because tokens are never split mid-word/mid-number.
+            for (Token t : tokens) {
+                Column col = boundaries.classify(t.centerX());
+                if (col == Column.DATE) {
+                    // The real date was already carved out above by regex; anything from the
+                    // remaining characters that would still land in DATE is bleed-through
+                    // (e.g. a boundary that sits a hair too far right) — keep it in narration.
+                    col = Column.NARRATION;
+                }
+                StringBuilder sb = byColumn.get(col);
+                if (sb.length() > 0) {
+                    sb.append(' ');
+                }
+                sb.append(t.text());
+            }
+
+            narrationText = byColumn.get(Column.NARRATION).toString().trim();
+            refNoText = byColumn.get(Column.REF_NO).toString().trim();
+            valueDateText = byColumn.get(Column.VALUE_DATE).toString().trim();
+            withdrawalText = byColumn.get(Column.WITHDRAWAL).toString().trim();
+            depositText = byColumn.get(Column.DEPOSIT).toString().trim();
+            balanceText = byColumn.get(Column.BALANCE).toString().trim();
+        }
+
+        /**
+         * Looks for a dd/mm/yy date anchored at the very start of the row's character stream
+         * (a continuation/wrapped-narration row won't have one, and correctly yields -1 so the
+         * whole row is treated as narration). Returns the character index right after the
+         * matched date, or -1 if the row doesn't start with a date.
+         */
+        private static int findLeadingDateEndIndex(List<TextPosition> sortedChars) {
+            StringBuilder raw = new StringBuilder();
+            for (TextPosition tp : sortedChars) {
+                raw.append(tp.getUnicode());
+            }
+            Matcher m = DATE_PATTERN.matcher(raw);
+            return m.lookingAt() ? m.end() : -1;
+        }
     }
 
     /**
      * Extracts every character in the table region and groups characters that sit on the
      * same visual line (within {@link #ROW_Y_TOLERANCE}) into a {@link Row}. Column
-     * classification is deferred to {@link Row#finalizeRow()}, which works on whole tokens
+     * classification is deferred to {@link Row#finalizeRow}, which works on whole tokens
      * rather than individual characters.
      */
     private static class RowExtractor extends PDFTextStripper {
         private final float minY, maxY;
+        private final ColumnBoundaries boundaries;
         private final List<Row> rows = new ArrayList<>();
 
-        RowExtractor(float minY, float maxY) throws IOException {
+        RowExtractor(float minY, float maxY, ColumnBoundaries boundaries) throws IOException {
             this.minY = minY;
             this.maxY = maxY;
+            this.boundaries = boundaries;
             setSortByPosition(true);
         }
 
@@ -335,7 +604,7 @@ public class HdfcBankStatementParser implements BankStatementParser {
             // created in that order; sort defensively in case a wrapped run arrives out of order.
             rows.sort((a, b) -> Float.compare(a.y, b.y));
             for (Row r : rows) {
-                r.finalizeRow();
+                r.finalizeRow(boundaries);
             }
             return rows;
         }
@@ -355,6 +624,7 @@ public class HdfcBankStatementParser implements BankStatementParser {
         private BigDecimal pendingAmount;
         private BigDecimal previousBalance;
         private String pendingTransactionId;
+        private String pendingValueDate;
         private String txnType;
 
         void consume(List<Row> rows, List<EnhancedTransaction> results) {
@@ -373,13 +643,9 @@ public class HdfcBankStatementParser implements BankStatementParser {
                         continue;
                     }
 
-                    pendingTransactionId = row.narrationText.substring(row.narrationText.length() - 17).trim();
-
                     pendingDate = parsedDate;
-                    pendingNarration = row.narrationText.substring(0,row.narrationText.length() - 17);
-
-                    // This is because withdrawl text is having value date. e.g. 01/06/26 15,538.00
-                    row.withdrawalText = row.withdrawalText.substring(9);
+                    pendingNarration = row.narrationText;
+                    pendingValueDate = row.valueDateText;
 
                     if (!row.withdrawalText.isEmpty()) {
                         pendingAmount = safeParseAmount(row.withdrawalText).negate();
@@ -408,11 +674,15 @@ public class HdfcBankStatementParser implements BankStatementParser {
                 txn.setPayee(pendingNarration);
                 txn.setAmount(pendingAmount.doubleValue());
                 txn.setTxnType(txnType);
+                // TODO: wire pendingValueDate ("01/06/26" style string, parse with DATE_FMT)
+                // into EnhancedTransaction once that model exposes a value-date field/setter.
                 results.add(txn);
             }
             pendingDate = null;
             pendingNarration = null;
             pendingAmount = null;
+            pendingTransactionId = null;
+            pendingValueDate = null;
         }
     }
 
