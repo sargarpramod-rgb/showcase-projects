@@ -3,8 +3,7 @@ package com.transaction.config;
 import com.transaction.security.CookieService;
 import com.transaction.security.JwtService;
 import com.transaction.security.OAuthSuccessHandler;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,46 +24,40 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
 
-    @Autowired
-    JwtService jwtService;
-
-    @Autowired
-    CookieService cookieService;
+    private final JwtService jwtService;
+    private final CookieService cookieService;
 
     @Value("${frontend.url}")
     private String frontendUrl;
 
+    // ✅ MAIN SECURITY FILTER CHAIN
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
-                // ── CORS must come before CSRF ────────────────────────────────────
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+    SecurityFilterChain filterChain(HttpSecurity http,
+                                    JwtAuthFilter jwtAuthFilter) throws Exception {
 
-                // ── CSRF disabled for stateless JWT/cookie API ────────────────────
-                // SameSite=Strict on cookies provides CSRF protection instead
+        http
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
 
-                .sessionManagement(sm -> sm
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                .sessionManagement(sm ->
+                        sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
 
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**").permitAll()   // login, logout, verify
+                        .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )
 
-                .oauth2Login(oauth -> oauth
-                        .successHandler(oAuthSuccessHandler())
+                .oauth2Login(oauth ->
+                        oauth.successHandler(oAuthSuccessHandler())
                 )
 
-                // ── JWT filter reads HttpOnly cookies on every request ────────────
-                .addFilterBefore(
-                        new JwtAuthFilter(jwtService, cookieService),
-                        UsernamePasswordAuthenticationFilter.class
-                )
+                // ✅ Use Spring-managed filter
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
 
                 .exceptionHandling(ex -> ex
                         .defaultAuthenticationEntryPointFor(
@@ -76,36 +69,52 @@ public class SecurityConfig {
         return http.build();
     }
 
+    // ✅ REGISTER FILTER AS BEAN
+    @Bean
+    public JwtAuthFilter jwtAuthFilter() {
+        return new JwtAuthFilter(jwtService, cookieService);
+    }
+
+    // ✅ OAUTH SUCCESS HANDLER
+    @Bean
+    public AuthenticationSuccessHandler oAuthSuccessHandler() {
+        return new OAuthSuccessHandler(frontendUrl, jwtService, cookieService);
+    }
+
+    // ✅ CORS CONFIG
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
+
         CorsConfiguration config = new CorsConfiguration();
 
-        // Must be explicit origin — wildcard (*) not allowed with credentials
         config.setAllowedOrigins(List.of(frontendUrl));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+
+        config.setAllowedMethods(List.of(
+                "GET", "POST", "PUT", "DELETE", "OPTIONS"
+        ));
+
         config.setAllowedHeaders(List.of(
+                "Authorization",   // 🔥 IMPORTANT
                 "Content-Type",
                 "Accept",
                 "Origin",
-                "X-Requested-With",
-                "Access-Control-Request-Method",
-                "Access-Control-Request-Headers"
+                "X-Requested-With"
         ));
-        config.setAllowCredentials(true);  // required for cookies cross-origin
-        config.setExposedHeaders(List.of("Set-Cookie")); // so browser sees cookie headers
-        config.setMaxAge(3600L);           // cache preflight OPTIONS for 1 hour
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        config.setAllowCredentials(true);
+
+        config.setExposedHeaders(List.of(
+                "Set-Cookie",
+                "Authorization"
+        ));
+
+        config.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
+
         source.registerCorsConfiguration("/**", config);
+
         return source;
-    }
-
-
-
-    @Bean
-    AuthenticationSuccessHandler oAuthSuccessHandler(@Value("${frontend.url}") String frontendUrl,
-                                                     JwtService jwtService,
-                                                     CookieService cookieService) {
-        return new OAuthSuccessHandler(frontendUrl, jwtService, cookieService);
     }
 }

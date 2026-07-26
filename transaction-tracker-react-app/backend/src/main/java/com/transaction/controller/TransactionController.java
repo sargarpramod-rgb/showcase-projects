@@ -4,6 +4,7 @@ import com.github.fracpete.quicken4j.Transactions;
 import com.transaction.model.*;
 import com.transaction.service.CategoryService;
 import com.transaction.service.TransactionService;
+import com.transaction.service.UploadService;
 import com.transaction.upload.TransactionFileReaderFactory;
 import com.transaction.upload.TransactionFileReaderStrategy;
 import com.transaction.upload.TransactionFileType;
@@ -13,10 +14,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.util.DigestUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.*;
 
 import static java.util.stream.Collectors.toMap;
@@ -37,15 +42,43 @@ public class TransactionController {
     CategoryService categoryService;
 
     @Autowired
+    UploadService uploadService;
+
+    @Autowired
     TransactionFileReaderFactory fileReaderFactory;
 
     @PostMapping("/transactions/upload")
-    public ResponseEntity<Map<String, List<EnhancedTransaction>>> getAllTransactions(@RequestParam("file") MultipartFile file,
-                                                                                     @RequestParam(value = "type", required = false) TransactionFileType typeHint) {
+    public ResponseEntity<Map<String, List<EnhancedTransaction>>> upload
+            ( @AuthenticationPrincipal UserPrincipal user,
+              @RequestParam("file") MultipartFile file,
+             @RequestParam(value = "type", required = false) TransactionFileType typeHint) {
         try {
+
+
+            Long userId = user.getUserId();
+            byte[] bytes = file.getBytes();
+            String fileHash = DigestUtils.md5DigestAsHex(bytes);
+
+            // ✅ Create/get upload entry
+            Upload upload = uploadService.getOrCreateUpload(
+                    userId,
+                    file.getOriginalFilename(),
+                    fileHash
+            );
+
+            Long uploadId = upload.getUploadId();
+
+            // ✅ If already saved earlier → reuse DB data
+            if (uploadService.shouldReuseFromDb(upload)) {
+               /* return ResponseEntity.ok(
+                        transactionService.getByUploadId(uploadId)
+                );*/
+            }
+
+
             TransactionFileType resolvedType = fileReaderFactory.resolveType(file, typeHint);
             TransactionFileReaderStrategy strategy = fileReaderFactory.getStrategy(resolvedType);
-            List<EnhancedTransaction> tranList = strategy.read(file.getInputStream());
+            List<EnhancedTransaction> tranList = strategy.read(new ByteArrayInputStream(bytes));
             return ResponseEntity.ok(transactionService.updateTransactionDetails(tranList));
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
