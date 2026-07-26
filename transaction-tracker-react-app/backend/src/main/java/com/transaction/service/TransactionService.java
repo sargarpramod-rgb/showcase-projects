@@ -209,55 +209,25 @@ public class TransactionService {
         return  subCategoryId;
     }
 
-    public LinkedHashMap<String, List<EnhancedTransaction>> updateTransactionDetails(Transactions trans) {
+
+    public LinkedHashMap<String, List<EnhancedTransaction>> updateTransactionDetails(List<EnhancedTransaction> trans) {
 
         Map<String, List<EnhancedTransaction>> transactionData = trans.stream().map(t -> {
-
-            EnhancedTransaction newTransaction = new EnhancedTransaction();
-            String transactionAmount = t.getValue("M");
-
-
-
-            newTransaction.setDate(t.getValue("D") + " " +
-                    transactionAmount.substring(transactionAmount.indexOf("MTXN TIME ")+1));
-
-            if (t.getNumber().trim().equalsIgnoreCase("000000000000000")) {
-                // case of transaction id being 0 which is causing issue while getting saved to the database.
-
-                String tranId = StringUtils.leftPad(StringUtils.joinWith("",
-                                t.getValue("D").replace("-", ""),
-                                transactionAmount.substring(9).replace(":", "")),
-                        16, "0");
-
-
-                System.out.println("tranId"+ tranId);
-                newTransaction.setTransactionId(tranId);
-            } else {
-                newTransaction.setTransactionId(t.getNumber());
-            }
-            newTransaction.setAmount(t.getAmount());
-            newTransaction.setPayeeFullName(t.getPayee().contains("-") &&
-                    t.getPayee().contains("@") ?t.getPayee().substring(t.getPayee().indexOf("-")+1,t.getPayee().indexOf("@"))
-                    : t.getPayee());
-           String payeeName= t.getPayee().contains("-") ? t.getPayee().split("-")[1].trim(): t.getPayee().trim();
-            newTransaction.setPayee(payeeName);
-            newTransaction.setTxnType(newTransaction.getAmount()<0?"Debit":"Credit");
 
             List<PayeeCategoryResponse> payeeCategoryResponseList = getPayeeCategoryMappings();
 
             if (payeeCategoryResponseList != null && !payeeCategoryResponseList.isEmpty()) {
                 Optional<PayeeCategoryResponse> optionalPayeeCategoryResponse = payeeCategoryResponseList.stream()
                         .filter(payeeCategoryResponse -> payeeCategoryResponse.getPayeeName()
-                                .equalsIgnoreCase(payeeName))
+                                .equalsIgnoreCase(t.getPayee()))
                         .findAny();
 
                 optionalPayeeCategoryResponse.ifPresent(payeeCategoryResponse -> {
-                    newTransaction.setCategory(payeeCategoryResponse.getCategoryName());
-                    newTransaction.setSubcategory(payeeCategoryResponse.getSubCategoryName());
+                    t.setCategory(payeeCategoryResponse.getCategoryName());
+                    t.setSubcategory(payeeCategoryResponse.getSubCategoryName());
                 });
             }
-
-            return newTransaction;
+            return t;
         }).collect(Collectors.groupingBy(EnhancedTransaction::getPayee));
 
         // Flatten and sort all transactions by amount after grouping
@@ -272,6 +242,8 @@ public class TransactionService {
 
         return transactionMap;
     }
+
+
 
 
     public List<EnhancedTransaction> getTransactionsByYear(int year) {

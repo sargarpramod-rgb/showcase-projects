@@ -1,11 +1,13 @@
 package com.transaction.controller;
 
-import com.github.fracpete.quicken4j.QIFReader;
-import com.github.fracpete.quicken4j.Transaction;
 import com.github.fracpete.quicken4j.Transactions;
 import com.transaction.model.*;
 import com.transaction.service.CategoryService;
 import com.transaction.service.TransactionService;
+import com.transaction.upload.TransactionFileReaderFactory;
+import com.transaction.upload.TransactionFileReaderStrategy;
+import com.transaction.upload.TransactionFileType;
+import com.transaction.upload.UnsupportedFileTypeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,13 +16,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static java.util.stream.Collectors.toMap;
 
@@ -39,16 +36,21 @@ public class TransactionController {
     @Autowired
     CategoryService categoryService;
 
-    @PostMapping("/upload-transaction-file")
-    public ResponseEntity<Map<String, List<EnhancedTransaction>>> getAllTransactions(@RequestParam("file") MultipartFile file) {
-        try {
+    @Autowired
+    TransactionFileReaderFactory fileReaderFactory;
 
-            var reader = new QIFReader();
-            Transactions trans = reader.read(file.getInputStream());
-            return ResponseEntity.ok(transactionService.updateTransactionDetails(trans));
-        }
-        catch (IOException e) {
+    @PostMapping("/transactions/upload")
+    public ResponseEntity<Map<String, List<EnhancedTransaction>>> getAllTransactions(@RequestParam("file") MultipartFile file,
+                                                                                     @RequestParam(value = "type", required = false) TransactionFileType typeHint) {
+        try {
+            TransactionFileType resolvedType = fileReaderFactory.resolveType(file, typeHint);
+            TransactionFileReaderStrategy strategy = fileReaderFactory.getStrategy(resolvedType);
+            List<EnhancedTransaction> tranList = strategy.read(file.getInputStream());
+            return ResponseEntity.ok(transactionService.updateTransactionDetails(tranList));
+        } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        } catch (UnsupportedFileTypeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(null);
         }
     }
 

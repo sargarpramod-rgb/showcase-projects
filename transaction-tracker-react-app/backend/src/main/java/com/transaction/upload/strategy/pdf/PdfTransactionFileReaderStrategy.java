@@ -1,6 +1,8 @@
 package com.transaction.upload.strategy.pdf;
 
+import com.github.fracpete.quicken4j.Transaction;
 import com.github.fracpete.quicken4j.Transactions;
+import com.transaction.model.EnhancedTransaction;
 import com.transaction.upload.TransactionFileReaderStrategy;
 import com.transaction.upload.TransactionFileType;
 import com.transaction.upload.strategy.pdf.bank.HdfcBankStatementParser;
@@ -33,7 +35,9 @@ public class PdfTransactionFileReaderStrategy implements TransactionFileReaderSt
 
         try (InputStream inputStream = Files.newInputStream(Path.of("C:\\Pramod\\Transactions\\Acct_Statement_XXXXXXXX4904_02072026_without_password.pdf"))) {
 
-            pdfTransactionFileReaderStrategy.read(inputStream);
+            List<EnhancedTransaction> transactions = pdfTransactionFileReaderStrategy.read(inputStream);
+
+            System.out.println(transactions);
 
         } catch (IOException e) {
             System.err.println("Error reading PDF file: " + e.getMessage());
@@ -43,7 +47,7 @@ public class PdfTransactionFileReaderStrategy implements TransactionFileReaderSt
     }
 
     @Override
-    public Transactions read(InputStream inputStream) throws IOException {
+    public List<EnhancedTransaction> read(InputStream inputStream) throws IOException {
         byte[] bytes = inputStream.readAllBytes();
 
         try (PDDocument document = Loader.loadPDF(bytes)) {

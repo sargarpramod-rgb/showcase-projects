@@ -50,7 +50,7 @@ public class HdfcBankStatementParserOld implements BankStatementParser {
     }
 
     @Override
-    public Transactions parse(PDDocument document) throws IOException {
+    public List<EnhancedTransaction> parse(PDDocument document) throws IOException {
         List<EnhancedTransaction> results = new ArrayList<>();
 
         List<PDPage> pages = new ArrayList<>();

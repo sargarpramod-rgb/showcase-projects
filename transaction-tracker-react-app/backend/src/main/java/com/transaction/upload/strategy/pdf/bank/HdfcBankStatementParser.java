@@ -4,6 +4,7 @@ package com.transaction.upload.strategy.pdf.bank;
 import com.github.fracpete.quicken4j.Transactions;
 import com.transaction.model.EnhancedTransaction;
 import com.transaction.upload.strategy.pdf.BankStatementParser;
+import com.transaction.util.TransactionUtil;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -51,7 +52,7 @@ public class HdfcBankStatementParser implements BankStatementParser {
     }
 
     @Override
-    public Transactions parse(PDDocument document) throws IOException {
+    public List<EnhancedTransaction> parse(PDDocument document) throws IOException {
         List<EnhancedTransaction> results = new ArrayList<>();
 
         List<PDPage> pages = new ArrayList<>();
@@ -119,8 +120,7 @@ public class HdfcBankStatementParser implements BankStatementParser {
         // Whatever transaction was still open when the document ended needs to be flushed.
         accumulator.flush(results);
 
-        //return new Transactions(results);
-        return null;
+        return results;
     }
 
     @Override
@@ -643,6 +643,7 @@ public class HdfcBankStatementParser implements BankStatementParser {
                         continue;
                     }
 
+                    pendingTransactionId = row.refNoText;
                     pendingDate = parsedDate;
                     pendingNarration = row.narrationText;
                     pendingValueDate = row.valueDateText;
@@ -671,7 +672,9 @@ public class HdfcBankStatementParser implements BankStatementParser {
                 EnhancedTransaction txn = new EnhancedTransaction();
                 txn.setTransactionId(pendingTransactionId);
                 txn.setDate(pendingDate.toString());
-                txn.setPayee(pendingNarration);
+
+                TransactionUtil.setPayeeDetails(txn,pendingNarration);
+               // txn.setPayee(pendingNarration);
                 txn.setAmount(pendingAmount.doubleValue());
                 txn.setTxnType(txnType);
                 // TODO: wire pendingValueDate ("01/06/26" style string, parse with DATE_FMT)
