@@ -17,14 +17,17 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.EnumMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
+import static java.util.concurrent.CompletableFuture.supplyAsync;
 
 @Component
 public class HdfcBankStatementParser implements BankStatementParser {
@@ -53,74 +56,115 @@ public class HdfcBankStatementParser implements BankStatementParser {
 
     @Override
     public List<EnhancedTransaction> parse(PDDocument document) throws IOException {
-        List<EnhancedTransaction> results = new ArrayList<>();
+
 
         List<PDPage> pages = new ArrayList<>();
         document.getPages().forEach(pages::add);
 
-        // Accumulator lives OUTSIDE the page loop: a transaction's wrapped narration
-        // can legitimately continue onto the top of the next page, so state must
-        // survive page boundaries and only be flushed when the *next date* appears
-        // (or at the very end of the document).
-        TransactionAccumulator accumulator = new TransactionAccumulator();
+        ColumnBoundaries boundaries = getColumnBoundariesForFirstPageWithHeaderRows(document);
+        ExecutorService executor = Executors.newFixedThreadPool(5);
 
-        // Column boundaries are detected fresh from each page's own header row where one
-        // exists (page 1, and any later page that happens to repeat the header). Pages
-        // without a header (typical continuation pages) reuse whatever layout was most
-        // recently detected, since HDFC keeps column positions constant across a statement.
-        ColumnBoundaries lastKnownBoundaries = null;
+        List<CompletableFuture<List<EnhancedTransaction>>> completableFutureList =
+                IntStream.range(0, pages.size()).mapToObj(pageIndex -> {
 
-        for (int pageIndex = 0; pageIndex < pages.size(); pageIndex++) {
             PDPage page = pages.get(pageIndex);
+            return supplyAsync(() -> {
+                try {
+                    return parsePage(document, pageIndex, page, boundaries);
+                } catch (IOException e) {
+                    // Handle Exception properly.
+                    throw new RuntimeException(e);
+                }
+            },executor)
+                .exceptionally(ex -> {
+                        log.error("Error parsing page {}", pageIndex, ex);
+                        return Collections.emptyList();
+                    });
+        }).toList();
 
-            float statementLineY = findTextY(document, pageIndex, STATEMENT_LINE_ANCHOR);
-            if (statementLineY < 0) {
-                log.debug("Page {} has no '{}' anchor — skipping", pageIndex + 1, STATEMENT_LINE_ANCHOR);
-                continue;
-            }
+        // 4. Combine all futures into a single master future
+        CompletableFuture<Void> allFutures = CompletableFuture.allOf(
+                completableFutureList.toArray(new CompletableFuture[0])
+        );
 
-            // Column header row only exists on page 1; later pages: table starts right after statement line
-            float columnHeaderY = findTextY(document, pageIndex, COLUMN_HEADER_ANCHOR);
-            float tableStartY = Math.max(columnHeaderY, statementLineY);
+        // 5. Block and merge all the results together once everything completes
+        List<EnhancedTransaction> transactionList = allFutures.thenApply(v ->
 
-            float footerY = findTextY(document, pageIndex, FOOTER_ANCHOR);
-            float tableEndY = footerY > 0 ? footerY : page.getMediaBox().getHeight();
+                        IntStream.range(0,completableFutureList.size())
+                                .mapToObj(i -> {
+                                    try {
+                                        return completableFutureList.get(i).join();
+                                    } catch (Exception e) {
+                                        log.error("Error joining future for page {}", i, e);
+                                        return Collections.<EnhancedTransaction>emptyList();
+                                    }
+                                })
+                                .flatMap(Collection::stream)
+                                .collect(Collectors.toList())
+        ).join();// block main thread until the entire batch is done
 
-            if (tableEndY <= tableStartY) {
-                log.warn("Page {} table end ({}) <= table start ({}); skipping page", pageIndex + 1, tableEndY, tableStartY);
-                continue;
-            }
 
-            ColumnBoundaries boundaries;
-            if (columnHeaderY > 0) {
-                boundaries = detectColumnBoundaries(document, pageIndex, columnHeaderY);
-                lastKnownBoundaries = boundaries;
-            } else if (lastKnownBoundaries != null) {
-                boundaries = lastKnownBoundaries;
-            } else {
-                log.warn("Page {} has no header row and no previously detected layout — falling back to default column coordinates", pageIndex + 1);
-                boundaries = DEFAULT_COLUMN_BOUNDARIES;
-            }
 
-            RowExtractor extractor = new RowExtractor(tableStartY, tableEndY, boundaries);
-            extractor.setStartPage(pageIndex + 1);
-            extractor.setEndPage(pageIndex + 1);
-            extractor.getText(document);
-
-            List<Row> rows = extractor.buildRows();
-
-            int before = results.size();
-            accumulator.consume(rows, results);
-
-            if (results.size() == before && rows.stream().noneMatch(r -> !r.dateText.isEmpty())) {
-                log.warn("Page {} produced zero transactions — possible template drift or coordinate mismatch", pageIndex + 1);
-            }
+        executor.shutdown();
+        try {
+            executor.awaitTermination(5, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
 
+
         // Whatever transaction was still open when the document ended needs to be flushed.
-        accumulator.flush(results);
+        //accumulator.flush(results);
+
+        return transactionList;
+    }
+
+    private List<EnhancedTransaction> parsePage(PDDocument document, int pageIndex, PDPage page, ColumnBoundaries boundaries) throws IOException {
+        float columnHeaderY;
+        float statementLineY = findTextY(document, pageIndex, STATEMENT_LINE_ANCHOR);
+        if (statementLineY < 0) {
+            log.debug("Page {} has no '{}' anchor — skipping", pageIndex + 1, STATEMENT_LINE_ANCHOR);
+            return new ArrayList<>();
+        }
+
+        // Column header row only exists on page 1; later pages: table starts right after statement line
+        columnHeaderY = -1;
+        float tableStartY = Math.max(columnHeaderY, statementLineY);
+
+        float footerY = findTextY(document, pageIndex, FOOTER_ANCHOR);
+        float tableEndY = footerY > 0 ? footerY : page.getMediaBox().getHeight();
+
+        if (tableEndY <= tableStartY) {
+            log.warn("Page {} table end ({}) <= table start ({}); skipping page", pageIndex + 1, tableEndY, tableStartY);
+            return new ArrayList<>();
+        }
+
+        RowExtractor extractor = new RowExtractor(tableStartY, tableEndY, boundaries);
+        extractor.setStartPage(pageIndex + 1);
+        extractor.setEndPage(pageIndex + 1);
+        extractor.getText(document);
+
+        List<Row> rows = extractor.buildRows();
+
+        List<EnhancedTransaction> results = new ArrayList<>();
+        // Moving this inside loop, need to
+        TransactionAccumulator accumulator = new TransactionAccumulator();
+        accumulator.consume(rows, results);
 
         return results;
+    }
+
+    private ColumnBoundaries getColumnBoundariesForFirstPageWithHeaderRows(PDDocument document) throws IOException {
+        ColumnBoundaries boundaries;
+        float columnHeaderY = findTextY(document, 0, COLUMN_HEADER_ANCHOR);
+
+        if (columnHeaderY > 0) {
+            boundaries = detectColumnBoundaries(document, 0, columnHeaderY);
+        }  else {
+            log.warn("There is no header row and no previously detected layout — falling back to default column coordinates");
+            boundaries = DEFAULT_COLUMN_BOUNDARIES;
+        }
+        return boundaries;
     }
 
     @Override
@@ -610,6 +654,17 @@ public class HdfcBankStatementParser implements BankStatementParser {
         }
     }
 
+    private static class AmountCalc {
+
+        private BigDecimal amount;
+        private String type;
+
+        public AmountCalc(BigDecimal amount, String type) {
+            this.amount = amount;
+            this.type = type;
+        }
+    }
+
     // ---------- transaction assembly ----------
 
     /**
@@ -628,19 +683,22 @@ public class HdfcBankStatementParser implements BankStatementParser {
         private String txnType;
 
         void consume(List<Row> rows, List<EnhancedTransaction> results) {
-            for (Row row : rows) {
+
+            IntStream.range(0, rows.size()).forEach(index -> {
+
+                Row  row = rows.get(index);
+
                 Matcher dateMatcher = DATE_PATTERN.matcher(row.dateText);
 
                 if (!row.dateText.isEmpty() && dateMatcher.find()) {
                     // New transaction detected — close out the previous one first.
                     flush(results);
 
-                    LocalDate parsedDate;
+                    LocalDate parsedDate = null;
                     try {
                         parsedDate = LocalDate.parse(dateMatcher.group(), DATE_FMT);
                     } catch (Exception e) {
                         pendingDate = null;
-                        continue;
                     }
 
                     pendingTransactionId = row.refNoText;
@@ -648,23 +706,54 @@ public class HdfcBankStatementParser implements BankStatementParser {
                     pendingNarration = row.narrationText;
                     pendingValueDate = row.valueDateText;
 
-                    if (!row.withdrawalText.isEmpty()) {
-                        pendingAmount = safeParseAmount(row.withdrawalText).negate();
-                        txnType = "DEBIT";
-                    } else if (!row.depositText.isEmpty()) {
-                        pendingAmount = safeParseAmount(row.depositText);
-                        txnType = "CREDIT";
+                    AmountCalc amountCalc = getAmountCalc(row.withdrawalText, row.depositText);
+                    pendingAmount = amountCalc.amount;
+                    txnType = amountCalc.type;
+                } else if (index == rows.size() - 1) {
+                    // Handles case when last transaction on the page is with date, with other details spanning to next page.
+                    if(pendingDate == null) {
+                        EnhancedTransaction txn = new EnhancedTransaction();
+                        txn.setTransactionId(row.refNoText);
+                        txn.setDate(row.dateText);
+
+                        TransactionUtil.setPayeeDetails(txn,row.narrationText);
+                        // txn.setPayee(pendingNarration);
+                        AmountCalc amountCalc = getAmountCalc(row.withdrawalText, row.depositText);
+                        txn.setAmount(amountCalc.amount.doubleValue());
+                        txn.setTxnType(amountCalc.type);
+                        // TODO: wire pendingValueDate ("01/06/26" style string, parse with DATE_FMT)
+                        // into EnhancedTransaction once that model exposes a value-date field/setter.
+                        results.add(txn);
                     } else {
-                        log.warn("Row dated {} has neither withdrawal nor deposit — defaulting to 0", parsedDate);
-                        pendingAmount = BigDecimal.ZERO;
+                        // This is case where last row on the page is already having row before with date and possibly there
+                        // is another row with description spanning to the next page.
+                        flush(results);
                     }
-                } else if (pendingDate != null && !row.narrationText.isEmpty() && !row.narrationText.equalsIgnoreCase(FOOTER_ANCHOR)) {
+                }
+                else if (pendingDate != null && !row.narrationText.isEmpty() && !row.narrationText.equalsIgnoreCase(FOOTER_ANCHOR)) {
                     // Wrapped narration continuation — same transaction, no new date on this line.
                     pendingNarration = (pendingNarration == null || pendingNarration.isEmpty())
                             ? row.narrationText
                             : pendingNarration + " " + row.narrationText;
                 }
+                }
+            );
+        }
+
+        AmountCalc getAmountCalc(String withdrawalText, String depositText) {
+
+            AmountCalc calc = null;
+
+            if (!withdrawalText.isEmpty()) {
+
+                calc = new AmountCalc(safeParseAmount(withdrawalText).negate(), "DEBIT");
+            } else if (!depositText.isEmpty()) {
+                calc = new AmountCalc(safeParseAmount(depositText), "CREDIT");
+            } else {
+                calc = new AmountCalc(BigDecimal.ZERO, "UNKNOWN");
             }
+
+            return calc;
         }
 
         void flush(List<EnhancedTransaction> results) {

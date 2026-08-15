@@ -48,7 +48,7 @@ export const uploadTransactions = async (uploadedFile) => {
   const formData = new FormData();
   formData.append("file", uploadedFile);
 
-  const response = await apiFetch("/api/upload-transaction-file", {
+  const response = await apiFetch("/api/transactions/upload", {
     method: "POST",
     body: formData,  // apiFetch auto-detects FormData and skips Content-Type
   });

@@ -3,6 +3,7 @@ package com.transaction.config;
 import com.transaction.security.CookieService;
 import com.transaction.security.JwtService;
 import com.transaction.security.OAuthSuccessHandler;
+import com.transaction.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -29,6 +30,7 @@ public class SecurityConfig {
 
     private final JwtService jwtService;
     private final CookieService cookieService;
+    private final UserService userService;
 
     @Value("${frontend.url}")
     private String frontendUrl;
@@ -48,6 +50,7 @@ public class SecurityConfig {
 
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
+                        .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )
@@ -56,7 +59,6 @@ public class SecurityConfig {
                         oauth.successHandler(oAuthSuccessHandler())
                 )
 
-                // ✅ Use Spring-managed filter
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
 
                 .exceptionHandling(ex -> ex
@@ -78,7 +80,7 @@ public class SecurityConfig {
     // ✅ OAUTH SUCCESS HANDLER
     @Bean
     public AuthenticationSuccessHandler oAuthSuccessHandler() {
-        return new OAuthSuccessHandler(frontendUrl, jwtService, cookieService);
+        return new OAuthSuccessHandler(frontendUrl, jwtService, cookieService,userService);
     }
 
     // ✅ CORS CONFIG
@@ -94,7 +96,7 @@ public class SecurityConfig {
         ));
 
         config.setAllowedHeaders(List.of(
-                "Authorization",   // 🔥 IMPORTANT
+                "Authorization",
                 "Content-Type",
                 "Accept",
                 "Origin",

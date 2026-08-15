@@ -47,9 +47,9 @@ public class TransactionController {
     @Autowired
     TransactionFileReaderFactory fileReaderFactory;
 
-    @PostMapping("/transactions/upload")
+    @PostMapping("/transactions")
     public ResponseEntity<Map<String, List<EnhancedTransaction>>> upload
-            ( @AuthenticationPrincipal UserPrincipal user,
+                ( @AuthenticationPrincipal UserPrincipal user,
               @RequestParam("file") MultipartFile file,
              @RequestParam(value = "type", required = false) TransactionFileType typeHint) {
         try {
@@ -68,7 +68,7 @@ public class TransactionController {
 
             Long uploadId = upload.getUploadId();
 
-            // ✅ If already saved earlier → reuse DB data
+            // If already saved earlier → reuse DB data
             if (uploadService.shouldReuseFromDb(upload)) {
                /* return ResponseEntity.ok(
                         transactionService.getByUploadId(uploadId)

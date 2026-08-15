@@ -1,10 +1,15 @@
 package com.transaction.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.transaction.model.User;
+import com.transaction.model.UserPrincipal;
+import com.transaction.service.UserService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -22,6 +27,9 @@ public class JwtService {
     private final String googleClientId;
     private final long expirationMillis;
     private final long refreshExpirationMillis;
+
+    @Autowired
+    private UserService userService;
 
     // Blacklist: jti → expiry time (cleared lazily to avoid memory leak)
     private final ConcurrentHashMap<String, Date> blacklistedTokens = new ConcurrentHashMap<>();
@@ -42,10 +50,25 @@ public class JwtService {
     /**
      * Generate a short-lived access token (default 15 minutes).
      */
-    public String generateToken(Long userId, String email) {
+    public String generateToken(Long userId, String email,String name, String provider) {
+        return getToken(userId, email, name, provider,expirationMillis,"access");
+    }
+
+    /**
+     * Generate a long-lived refresh token (default 7 days).
+     */
+    public String generateRefreshToken(Long userId, String email,String name, String provider) {
+        return getToken(userId, email, name, provider, refreshExpirationMillis,"refresh");
+    }
+
+    private String getToken(Long userId, String email, String name,
+                            String provider, long expirationMillis, String tokenType) {
         return Jwts.builder()
-                .setSubject(email)
-                .claim("userId", userId)
+                .setSubject(String.valueOf(userId))
+                .claim("email", email)
+                .claim("name", name)
+                .claim("provider",provider)
+                .claim("type", tokenType)
                 .setId(UUID.randomUUID().toString())  // jti — used for blacklisting
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expirationMillis))
@@ -53,20 +76,7 @@ public class JwtService {
                 .compact();
     }
 
-    /**
-     * Generate a long-lived refresh token (default 7 days).
-     */
-    public String generateRefreshToken(Long userId, String email) {
-        return Jwts.builder()
-                .setSubject(email)
-                .claim("userId", userId)
-                .claim("type", "refresh")
-                .setId(UUID.randomUUID().toString())
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + refreshExpirationMillis))
-                .signWith(key)
-                .compact();
-    }
+
 
     // ── Token Rotation ────────────────────────────────────────────────────────
 
@@ -93,16 +103,18 @@ public class JwtService {
             throw new IllegalArgumentException("Refresh token already used or invalidated.");
         }
 
-        // Invalidate the old refresh token immediately (one-time use)
+        // TODO: Move this to the database.
         blacklistedTokens.put(claims.getId(), claims.getExpiration());
         cleanExpiredBlacklistEntries();
 
-        String email  = claims.getSubject();
-        Long userId   = claims.get("userId", Long.class);
+        Long userId = Long.valueOf(claims.getSubject());
+        String email = claims.get("email", String.class);
+
+        User user = userService.getUserByUserId(userId);
 
         return Map.of(
-                "accessToken",  generateToken(userId, email),
-                "refreshToken", generateRefreshToken(userId, email)
+                "accessToken",  generateToken(userId, email, user.getUsername(), user.getAuth_provider()),
+                "refreshToken", generateRefreshToken(userId, email,user.getUsername(), user.getAuth_provider())
         );
     }
 
@@ -120,22 +132,32 @@ public class JwtService {
         } catch (ExpiredJwtException e) {
             return false; // expired — let filter handle auto-refresh
         } catch (Exception e) {
-            return isValidGoogleToken(token); // may be a Google-issued token
+            return false;
         }
     }
 
-    /**
-     * Returns true only if the token is expired but the signature is valid.
-     * Used by the filter to decide whether auto-refresh should be attempted.
-     */
-    public boolean isTokenExpiredOnly(String token) {
+    public boolean isExpiredAccessToken(String token) {
+        if (token == null || token.isBlank()) {
+            return false;
+        }
+
         try {
             parseClaims(token);
-            return false; // parsed fine — not expired
+            return false; // Valid and not expired
+
         } catch (ExpiredJwtException e) {
-            return true;  // expired with valid signature — safe to attempt refresh
-        } catch (Exception e) {
-            return false; // invalid signature or malformed — don't refresh
+            Claims claims = e.getClaims();
+
+            return claims != null
+                    && "access".equals(
+                    claims.get("type", String.class)
+            )
+                    && claims.getSubject() != null
+                    && claims.getId() != null
+                    && !isBlacklisted(claims.getId());
+
+        } catch (JwtException | IllegalArgumentException e) {
+            return false; // Invalid signature, malformed or unsupported
         }
     }
 
@@ -147,11 +169,13 @@ public class JwtService {
     public Authentication getAuthentication(String token) {
         Claims claims = parseClaims(token);
 
-        String email  = claims.getSubject();
-        Object userId = claims.get("userId");
+        Long userId  = Long.valueOf(claims.getSubject());
+        String email = claims.get("email", String.class);
+
+        UserPrincipal userPrincipal = new UserPrincipal( userId, email);
 
         UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                email,
+                userPrincipal,
                 null,
                 Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"))
         );
@@ -204,6 +228,14 @@ public class JwtService {
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
+    }
+
+    public int getAccessTokenCookieMaxAgeSeconds() {
+        return Math.toIntExact(expirationMillis / 1000);
+    }
+
+    public int getRefreshTokenCookieMaxAgeSeconds() {
+        return Math.toIntExact(refreshExpirationMillis / 1000);
     }
 
     /**

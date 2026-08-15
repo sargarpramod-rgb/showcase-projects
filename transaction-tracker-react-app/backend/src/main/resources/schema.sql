@@ -50,6 +50,24 @@ CREATE CACHED TABLE IF NOT EXISTS "PUBLIC"."UPLOADS"(
                          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE CACHED TABLE IF NOT EXISTS "PUBLIC"."USERS"(
+                                                        user_id BIGINT AUTO_INCREMENT,
+                                                        username VARCHAR(255),
+                                                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE CACHED TABLE IF NOT EXISTS "PUBLIC"."USER_AUTH_PROVIDER"(
+                                                      id BIGINT AUTO_INCREMENT,
+                                                      user_id BIGINT,
+                                                      auth_provider VARCHAR(255),
+                                                      auth_provider_user_id TEXT,
+                                                      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE "PUBLIC"."USERS" ADD CONSTRAINT IF NOT EXISTS "PUBLIC"."CONSTRAINT_8" PRIMARY KEY("USER_ID");
+ALTER TABLE "PUBLIC"."USER_AUTH_PROVIDER" ADD CONSTRAINT IF NOT EXISTS "PUBLIC"."fk_user_auth" FOREIGN KEY("USER_ID") REFERENCES "PUBLIC"."USERS"("USER_ID") NOCHECK;
+
 ALTER TABLE "PUBLIC"."UPLOADS" ADD CONSTRAINT IF NOT EXISTS "PUBLIC"."CONSTRAINT_7" PRIMARY KEY("UPLOAD_ID");
 ALTER TABLE "PUBLIC"."UPLOADS" ADD CONSTRAINT IF NOT EXISTS "PUBLIC"."uq_user_file" UNIQUE("USER_ID", "FILE_HASH");
 

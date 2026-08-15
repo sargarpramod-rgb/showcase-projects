@@ -35,20 +35,24 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String accessToken  = cookieService.getAccessToken(request);
         String refreshToken = cookieService.getRefreshToken(request);
 
-        if (accessToken == null) {
+        if (accessToken == null && refreshToken == null) {
             filterChain.doFilter(request, response);
             return;
         }
 
         // ── Case 1: Access token valid ────────────────────────────────────────
-        if (jwtService.isTokenValid(accessToken)) {
+        if (accessToken != null
+                && jwtService.isTokenValid(accessToken)) {
             setAuthentication(accessToken);
             filterChain.doFilter(request, response);
             return;
         }
 
+        boolean shouldRefresh = refreshToken != null
+                        && (accessToken == null|| jwtService.isExpiredAccessToken(accessToken));
+
         // ── Case 2: Access token expired — auto rotate ────────────────────────
-        if (jwtService.isTokenExpiredOnly(accessToken) && refreshToken != null) {
+        if (shouldRefresh) {
             try {
                 Map<String, String> newTokens = jwtService.rotateTokens(refreshToken);
 
@@ -56,12 +60,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 cookieService.setAccessTokenCookie(
                     response,
                     newTokens.get("accessToken"),
-                    15 * 60           // 15 minutes
+                    jwtService.getAccessTokenCookieMaxAgeSeconds()          // 15 minutes
                 );
                 cookieService.setRefreshTokenCookie(
                     response,
                     newTokens.get("refreshToken"),
-                    7 * 24 * 60 * 60  // 7 days
+                    jwtService.getRefreshTokenCookieMaxAgeSeconds()  // 7 days
                 );
 
                 setAuthentication(newTokens.get("accessToken"));
