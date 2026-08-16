@@ -41,7 +41,6 @@ public class QifTransactionFileReaderStrategy implements TransactionFileReaderSt
                         16, "0");
 
 
-                System.out.println("tranId" + tranId);
                 newTransaction.setTransactionId(tranId);
             } else {
                 newTransaction.setTransactionId(t.getNumber());

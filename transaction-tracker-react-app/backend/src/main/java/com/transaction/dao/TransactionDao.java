@@ -1,10 +1,12 @@
 package com.transaction.dao;
 
+import com.transaction.model.EnhancedTransaction;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Repository
@@ -12,6 +14,28 @@ public class TransactionDao {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    private String GET_TRANSACTIONS_BY_UPLOAD_ID = "SELECT c.name AS category_name,\n" +
+            "       sc.name AS subcategory_name,\n" +
+            "       t.*\n" +
+            "FROM transactions t\n" +
+            "JOIN categories c\n" +
+            "  ON t.category_id = c.id\n" +
+            "JOIN subcategories sc\n" +
+            "  ON t.category_id = sc.category_id\n" +
+            " AND t.subcategory_id = sc.id\n" +
+            "WHERE t.upload_id = ?;\n";
+
+    private String GET_TRANSACTIONS_BY_YEAR = "SELECT c.name AS category_name,\n" +
+            "       sc.name AS subcategory_name,\n" +
+            "       t.*\n" +
+            "FROM transactions t\n" +
+            "JOIN categories c\n" +
+            "  ON t.category_id = c.id\n" +
+            "JOIN subcategories sc\n" +
+            "  ON t.category_id = sc.category_id\n" +
+            " AND t.subcategory_id = sc.id\n" +
+            "WHERE YEAR(t.txn_date) = ? AND t.user_id = ?;\n";
 
     public Map<String, Long> populateCategoryMap() {
 
@@ -51,6 +75,20 @@ public class TransactionDao {
                     }
                     return map;
                 }
+        );
+    }
+
+    public List<EnhancedTransaction> getByUploadId(Long uploadId) {
+
+        return jdbcTemplate.query(GET_TRANSACTIONS_BY_UPLOAD_ID,
+                new Object[]{uploadId}, new EnhancedTransactionRowMapper());
+    }
+
+    public List<EnhancedTransaction> getByYear(int year, Long userId) {
+        return jdbcTemplate.query(
+                GET_TRANSACTIONS_BY_YEAR,
+                new Object[]{year,userId},
+                new EnhancedTransactionRowMapper()
         );
     }
 }

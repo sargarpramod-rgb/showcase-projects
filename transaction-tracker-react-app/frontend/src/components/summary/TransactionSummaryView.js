@@ -33,7 +33,8 @@ import CategorySettingsDialog from "../dialogs/CategorySettingsDialog";
 
 export default function TransactionSummaryView({onBack,onLoadingChange}) {
   const [rawTransactions, setRawTransactions] = useState("");
-  const [selectedYear, setSelectedYear] = useState("2025");
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(currentYear.toString());
   const [selectedMonths, setSelectedMonths] = useState([]);
   const [drillCategory, setDrillCategory] = useState(null);
   const [drillSubcategory, setDrillSubcategory] = useState(null);
@@ -42,7 +43,11 @@ export default function TransactionSummaryView({onBack,onLoadingChange}) {
 
   const months = ["January","February","March","April","May","June",
                   "July","August","September","October","November","December"];
-  const years = ["2023","2024","2025"];
+  
+  // Generate years: current year + last 3 years
+  const years = [currentYear, currentYear - 1, currentYear - 2, currentYear - 3]
+    .map(y => y.toString())
+    .sort((a, b) => parseInt(b) - parseInt(a));
 
   const drillRef = useRef(null);
 
@@ -52,7 +57,7 @@ useEffect(() => {
          const jwt = localStorage.getItem("jwt");
         onLoadingChange(true);
 
-        const response = await fetchPreviousTransactions();
+        const response = await fetchPreviousTransactions(selectedYear);
 
         setRawTransactions(response);
 
@@ -63,7 +68,7 @@ useEffect(() => {
       }
     };
     fetchTransactions();
-  }, [onLoadingChange]);
+  }, [onLoadingChange, selectedYear]);
 
 useEffect(() => {
   // Scroll drill section into view when a category is selected
@@ -350,16 +355,30 @@ const LABEL_FONT_SIZE = 11;
         {/* Filters */}
         <Box sx={{ display: "flex", gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField
-            select
             label="Year"
+            type="number"
             value={selectedYear}
             onChange={(e) => setSelectedYear(e.target.value)}
             size="small"
-          >
+            sx={{ width: 120 }}
+            inputProps={{ min: "1900", max: "2099" }}
+            helperText="Enter year or select"
+          />
+
+          {/* Quick year buttons */}
+          <Box sx={{ display: "flex", gap: 1 }}>
             {years.map((y) => (
-              <MenuItem key={y} value={y}>{y}</MenuItem>
+              <Button
+                key={y}
+                variant={selectedYear === y ? "contained" : "outlined"}
+                size="small"
+                onClick={() => setSelectedYear(y)}
+                sx={{ minWidth: "auto", px: 1 }}
+              >
+                {y}
+              </Button>
             ))}
-          </TextField>
+          </Box>
 
           {/* Compact month multi-select (chips) to reduce horizontal clutter */}
           <FormControl sx={{ minWidth: 220 }} size="small">

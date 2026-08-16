@@ -26,16 +26,16 @@ const apiFetch = async (url, options = {}) => {
   return response;
 };
 
-export const saveTransactions = async (aggregatedData) => {
-  const response = await apiFetch("/api/save-transactions", {
+export const saveTransactions = async (uploadId, aggregatedData) => {
+  const response = await apiFetch("/api/transactions/save", {
     method: "POST",
-    body: JSON.stringify(aggregatedData, null, 2),
+    body: JSON.stringify({ uploadId, aggregatedData }, null, 2),
   });
   return response.text();
 };
 
-export const fetchPreviousTransactions = async () => {
-  const response = await apiFetch("/api/transactions-summary-by/2025");
+export const fetchPreviousTransactions = async (year) => {
+  const response = await apiFetch(`/api/transactions-summary-by/${year}`);
   return response.json();
 };
 

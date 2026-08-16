@@ -15,7 +15,7 @@ public class Upload {
     private Long userId;
     private String fileName;
     private String fileHash;
-    private String status;
+    private UploadStatus status;
 
     private Instant createdAt;
     private Instant updatedAt;

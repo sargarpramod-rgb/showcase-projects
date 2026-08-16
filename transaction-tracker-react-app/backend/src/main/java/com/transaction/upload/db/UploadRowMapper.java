@@ -1,6 +1,7 @@
 package com.transaction.upload.db;
 
 import com.transaction.model.Upload;
+import com.transaction.model.UploadStatus;
 import org.springframework.jdbc.core.RowMapper;
 
 import java.sql.ResultSet;
@@ -17,7 +18,7 @@ public class UploadRowMapper implements RowMapper<Upload> {
         upload.setUserId(rs.getLong("user_id"));
         upload.setFileName(rs.getString("file_name"));
         upload.setFileHash(rs.getString("file_hash"));
-        upload.setStatus(rs.getString("status"));
+        upload.setStatus(UploadStatus.valueOf(rs.getString("status")));
 
         upload.setCreatedAt(rs.getTimestamp("created_at").toInstant());
         upload.setUpdatedAt(rs.getTimestamp("updated_at").toInstant());

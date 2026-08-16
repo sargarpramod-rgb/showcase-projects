@@ -1,6 +1,7 @@
 package com.transaction.upload.db;
 
 import com.transaction.model.Upload;
+import com.transaction.model.UploadStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -53,7 +54,7 @@ public class UploadRepository {
             ps.setLong(1, upload.getUserId());
             ps.setString(2, upload.getFileName());
             ps.setString(3, upload.getFileHash());
-            ps.setString(4, upload.getStatus());
+            ps.setString(4, upload.getStatus().name());
 
             return ps;
         }, keyHolder);
@@ -75,14 +76,31 @@ public class UploadRepository {
         return results.stream().findFirst();
     }
 
-    public void updateStatus(Long uploadId, String status) {
+    public void updateStatus(Long uploadId, UploadStatus status) {
 
         String sql = """
             UPDATE uploads
-            SET status = ?, updated_at = CURRENT_TIMESTAMP
+            SET status = ?
             WHERE upload_id = ?
         """;
 
-        jdbcTemplate.update(sql, status, uploadId);
+        jdbcTemplate.update(sql, status.name(), uploadId);
+    }
+
+    public Optional<Upload> findByUserIdAndUploadId(Long userId, Long uploadId) {
+
+        String sql = """
+            SELECT * FROM uploads
+            WHERE user_id = ? AND upload_id = ?
+        """;
+
+        List<Upload> results = jdbcTemplate.query(
+                sql,
+                new UploadRowMapper(),
+                userId,
+                uploadId
+        );
+
+        return results.stream().findFirst();
     }
 }

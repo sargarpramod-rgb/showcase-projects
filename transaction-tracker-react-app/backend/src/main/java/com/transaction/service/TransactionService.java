@@ -1,22 +1,16 @@
 package com.transaction.service;
 
-import com.github.fracpete.quicken4j.Transactions;
+import com.transaction.dao.TransactionDao;
 import com.transaction.model.*;
-import org.apache.catalina.util.StringUtil;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static java.util.stream.Collectors.toMap;
 
@@ -32,30 +26,25 @@ public class TransactionService {
     Map<String, Map<String, Long>> subcategoryMap;
 
     @Autowired
+    TransactionDao transactionDao;
+
+    @Autowired
+    PayeeCategoryService payeeCategoryService;
+
+    @Autowired
     public TransactionService(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public List<PayeeCategoryResponse> getPayeeCategoryMappings() {
-
-        String sql = """
-              SELECT
-              pc.payee_name,
-              c.name AS category_name,
-              sc.name AS subcategory_name
-              FROM payee_category_mapping pc
-              JOIN categories c
-              ON pc.category_id = c.id
-              JOIN subcategories sc
-              ON pc.category_id= sc.category_id
-              AND pc.subcategory_id=sc.id
-                """;
-
-        return jdbcTemplate.query(sql, (rs, rowNum) ->
-                new PayeeCategoryResponse(rs.getString("payee_name"),
-                rs.getString("category_name"),
-                rs.getString("subcategory_name")));
+    public List<EnhancedTransaction> getByUploadId(Long uploadId) {
+        return transactionDao.getByUploadId(uploadId);
     }
+
+    public List<EnhancedTransaction> getTransactionsByYear(int year, Long userId) {
+
+        return transactionDao.getByYear(year,userId);
+    }
+
 
     @Transactional
     public void savePayeeCategoryMappings(List<PayeeCategoryResponse> mappings) {
@@ -69,7 +58,7 @@ public class TransactionService {
         // Resolve names to IDs first
         List<Object[]> batchArgs = mappings.stream()
                 .filter(req -> Objects.nonNull(req.getCategoryName())
-                && Objects.nonNull(req.getSubCategoryName()))
+                        && Objects.nonNull(req.getSubCategoryName()))
                 .map(req -> {
                     Long categoryId = categoryMap.get(req.getCategoryName());
 
@@ -94,16 +83,16 @@ public class TransactionService {
                                 }
                                 return map;
                             }
-                            );
+                    );
 
 
-                            Long subCategoryId = subCategoryMap1.getOrDefault(req.getCategoryName(), Map.of())
-                                    .get(req.getSubCategoryName());
+                    Long subCategoryId = subCategoryMap1.getOrDefault(req.getCategoryName(), Map.of())
+                            .get(req.getSubCategoryName());
 
-                            if (subCategoryId == null) {
-                                //TODO : temp workaround, as from UI in case Miscellouns is selected, getting subcategory as Vegetables/Fruits(offline) which is not correct.
-                                subCategoryId = 1l;
-                            }
+                    if (subCategoryId == null) {
+                        //TODO : temp workaround, as from UI in case Miscellouns is selected, getting subcategory as Vegetables/Fruits(offline) which is not correct.
+                        subCategoryId = 1l;
+                    }
 
                     return new Object[]{req.getPayeeName(), categoryId, subCategoryId};
                 })
@@ -115,7 +104,7 @@ public class TransactionService {
 
 
     @Transactional
-    public void saveTransactionsBatch(List<EnhancedTransaction> transactions) {
+    public void saveTransactionsBatch(List<EnhancedTransaction> transactions, Long userId) {
 
 
         List<Object[]> batchArgs = transactions.stream()
@@ -145,9 +134,9 @@ public class TransactionService {
                     }
 
 
-
                     return new Object[]{
                             txn.getTransactionId(),
+                            userId,
                             localDate,
                             dateString,
                             txn.getPayee(),
@@ -160,15 +149,16 @@ public class TransactionService {
                 })
                 .toList();
 
-        // 4️⃣ Batch insert
         String sql = """
-                MERGE INTO transactions (transaction_id, txn_date,txn_date_str, payee, payee_full_name, amount, txn_type, category_id, subcategory_id)
+                MERGE INTO transactions (transaction_id,user_id, txn_date,txn_date_str, payee, payee_full_name, amount, txn_type, category_id, subcategory_id)
                 KEY(transaction_id)
-                VALUES (?, ?, ?,?, ?, ?, ?, ?, ?);
+                VALUES (?, ?,?, ?,?, ?, ?, ?, ?, ?);
                 
         """;
 
         jdbcTemplate.batchUpdate(sql, batchArgs);
+
+        //transactionDao.saveAll();
     }
 
 // TODO : check why subategory map not getting populated as expected, resulting in
@@ -210,11 +200,11 @@ public class TransactionService {
     }
 
 
-    public LinkedHashMap<String, List<EnhancedTransaction>> updateTransactionDetails(List<EnhancedTransaction> trans) {
+    public void updateTransactionDetails(List<EnhancedTransaction> trans, Long userId) {
 
-        Map<String, List<EnhancedTransaction>> transactionData = trans.stream().map(t -> {
+        List<PayeeCategoryResponse> payeeCategoryResponseList = payeeCategoryService.getByUserId(userId);
 
-            List<PayeeCategoryResponse> payeeCategoryResponseList = getPayeeCategoryMappings();
+        trans.forEach(t -> {
 
             if (payeeCategoryResponseList != null && !payeeCategoryResponseList.isEmpty()) {
                 Optional<PayeeCategoryResponse> optionalPayeeCategoryResponse = payeeCategoryResponseList.stream()
@@ -227,53 +217,12 @@ public class TransactionService {
                     t.setSubcategory(payeeCategoryResponse.getSubCategoryName());
                 });
             }
-            return t;
-        }).collect(Collectors.groupingBy(EnhancedTransaction::getPayee));
+        });
 
-        // Flatten and sort all transactions by amount after grouping
-        LinkedHashMap<String, List<EnhancedTransaction>> transactionMap = transactionData.entrySet().stream()
-                .sorted(Comparator.comparingDouble(e -> e.getValue().stream().mapToDouble(EnhancedTransaction::getAmount).sum()))
-                .collect(toMap(
-                        Map.Entry::getKey,
-                        Map.Entry::getValue,
-                        (e1, e2) -> e1,
-                        LinkedHashMap::new // Preserve sorted order
-                ));
-
-        return transactionMap;
+        //return getTransactionsByPayeeSortedByAmount(trans);
     }
 
 
 
 
-    public List<EnhancedTransaction> getTransactionsByYear(int year) {
-
-       return jdbcTemplate.query(
-                "SELECT c.name AS category_name,\n" +
-                        "       sc.name AS subcategory_name,\n" +
-                        "       t.*\n" +
-                        "FROM transactions t\n" +
-                        "JOIN categories c\n" +
-                        "  ON t.category_id = c.id\n" +
-                        "JOIN subcategories sc\n" +
-                        "  ON t.category_id = sc.category_id\n" +
-                        " AND t.subcategory_id = sc.id\n" +
-                        "WHERE YEAR(t.txn_date) = ?;\n",
-                new Object[]{year},
-                (rs, rowNum) -> {
-
-                    EnhancedTransaction enhancedTransaction = new EnhancedTransaction();
-
-                    enhancedTransaction.setTransactionId(rs.getString("transaction_id"));
-                    enhancedTransaction.setDate(rs.getString("txn_date"));
-                    enhancedTransaction.setAmount(rs.getDouble("amount"));
-                    enhancedTransaction.setPayeeFullName(rs.getString("payee_full_name"));
-                    enhancedTransaction.setPayee(rs.getString("payee"));
-                    enhancedTransaction.setTxnType(rs.getString("txn_type"));
-                    enhancedTransaction.setCategory(rs.getString("category_name"));
-                    enhancedTransaction.setSubcategory(rs.getString("subcategory_name"));
-
-                    return enhancedTransaction;
-                });
-    }
 }

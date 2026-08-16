@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState,useEffect, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -24,96 +24,180 @@ export default function UploadScreen({ setActiveScreen,setSaving, onBack,data,se
    const [openDialog, setOpenDialog] = useState(false);
    const [showIncome, setShowIncome] = useState(false);
    const [isSaved, setIsSaved] = useState(false);
+   const [uploadId, setUploadId] = useState(null);
 
-      let smallTransactionsCount = 0;
-      let smallTransactionsTotal = 0;
-      let smallTransactions = [];
+   // Update uploadId only when the API response uploadId changes.
+   useEffect(() => {
+     if (data?.uploadId != null) {
+       setUploadId(data.uploadId);
+     }
+   }, [data?.uploadId]);
 
+   const {
+     baseAggregatedData,
+     smallTransactions,
+     smallTransactionsCount,
+     smallTransactionsTotal
+   } = useMemo(() => {
+     const transactions = data?.transactions ?? [];
 
-      let aggregatedData = Object.entries(data).reduce((acc, [payee, transactions]) => {
+     let nextSmallTransactionsCount = 0;
+     let nextSmallTransactionsTotal = 0;
+     const nextSmallTransactions = [];
 
-        const filteredTransactions = transactions.filter(txn => Math.abs(txn.amount) >= 50)
+     const transactionsByPayee = transactions.reduce(
+       (groups, transaction) => {
+         const payee = transaction.payee || "Unknown Payee";
 
+         if (!groups[payee]) {
+           groups[payee] = [];
+         }
 
-        const smallTxns = transactions.filter(txn => Math.abs(txn.amount) < 50);
+         groups[payee].push(transaction);
+         return groups;
+       },
+       {}
+     );
 
-        if (smallTxns.length > 0) {
-          smallTransactionsCount += smallTxns.length;
-          smallTransactionsTotal += smallTxns.reduce((sum, txn) => sum + txn.amount, 0);
-          smallTransactions = [...smallTransactions, ...smallTxns];
-        }
+     const groupedData = Object.entries(transactionsByPayee)
+       .reduce((acc, [payee, payeeTransactions]) => {
+         const filteredTransactions = payeeTransactions.filter(
+           txn => Math.abs(Number(txn.amount)) >= 50
+         );
 
-        if (filteredTransactions.length > 0) {
-          const totalAmount = filteredTransactions.reduce((sum, txn) => sum + txn.amount, 0);
-          acc.push({
-            payee,
-            totalAmount,
-            payeeFullName : filteredTransactions[0].payeeFullName,
-            transactionCount: filteredTransactions.length,
-            transactions: filteredTransactions,
-            category: filteredTransactions[0].category,
-            subcategory: filteredTransactions[0].subcategory
-          });
-        }
+         const smallTxns = payeeTransactions.filter(
+           txn => Math.abs(Number(txn.amount)) < 50
+         );
 
-        return acc;
-      }, []);
+         if (smallTxns.length > 0) {
+           nextSmallTransactionsCount += smallTxns.length;
 
-      if (smallTransactionsCount > 0) {
-        aggregatedData.push({
-          payee: "Small Transactions",
-          totalAmount: smallTransactionsTotal,
-          transactionCount: smallTransactionsCount,
-          transactions: smallTransactions
-        });
-      }
+           nextSmallTransactionsTotal += smallTxns.reduce(
+             (sum, txn) => sum + Number(txn.amount),
+             0
+           );
 
-   console.log("original aggregatedData"+JSON.stringify(aggregatedData, null, 2))
+           nextSmallTransactions.push(...smallTxns);
+         }
 
-     const filteredData = aggregatedData.filter(item => {
-       if (!filterText) return true;
-       return (
-         item.payee?.trim().toLowerCase().includes(filterText.toLowerCase()) ||
-         item.category?.trim().toLowerCase().includes(filterText.toLowerCase()) ||
-         item.subcategory?.trim().toLowerCase().includes(filterText.toLowerCase())
+         if (filteredTransactions.length > 0) {
+           const totalAmount = filteredTransactions.reduce(
+             (sum, txn) => sum + Number(txn.amount),
+             0
+           );
+
+           acc.push({
+             payee,
+             totalAmount,
+             payeeFullName: filteredTransactions[0].payeeFullName,
+             transactionCount: filteredTransactions.length,
+             transactions: filteredTransactions,
+             category: filteredTransactions[0].category,
+             subcategory: filteredTransactions[0].subcategory
+           });
+         }
+
+         return acc;
+       }, [])
+       .sort(
+         (first, second) =>
+           Math.abs(second.totalAmount) - Math.abs(first.totalAmount)
        );
-     });
 
-     aggregatedData = filteredData
+     if (nextSmallTransactionsCount > 0) {
+       groupedData.push({
+         payee: "Small Transactions",
+         totalAmount: nextSmallTransactionsTotal,
+         transactionCount: nextSmallTransactionsCount,
+         transactions: nextSmallTransactions,
+         category: null,
+         subcategory: null
+       });
+     }
+
+     return {
+       baseAggregatedData: groupedData,
+       smallTransactions: nextSmallTransactions,
+       smallTransactionsCount: nextSmallTransactionsCount,
+       smallTransactionsTotal: nextSmallTransactionsTotal
+     };
+   }, [data?.transactions]);
+
+   // Apply UI filters without changing baseAggregatedData.
+   const aggregatedData = useMemo(() => {
+     return baseAggregatedData
+       .filter(item => {
+         if (!filterText) {
+           return true;
+         }
+
+         const searchText = filterText.trim().toLowerCase();
+
+         return (
+           item.payee?.trim().toLowerCase().includes(searchText) ||
+           item.category?.trim().toLowerCase().includes(searchText) ||
+           item.subcategory?.trim().toLowerCase().includes(searchText)
+         );
+       })
        .map(item => {
-         // safeguard for missing transactions
-         const txns = Array.isArray(item.transactions) ? item.transactions : [];
+         const transactions = Array.isArray(item.transactions)
+           ? item.transactions
+           : [];
 
-         const filteredTxns = showUncategorized
-           ? txns.filter(txn => !txn.category || !txn.subcategory) // only uncategorized
-           : showIncome ? txns.filter(txn => txn.amount > 0) : txns;                             // all transactions
+         let filteredTransactions = transactions;
+
+         if (showUncategorized) {
+           filteredTransactions = transactions.filter(
+             txn => !txn.category || !txn.subcategory
+           );
+         } else if (showIncome) {
+           filteredTransactions = transactions.filter(
+             txn => Number(txn.amount) > 0
+           );
+         }
 
          return {
            ...item,
-           transactions: filteredTxns,
-           transactionCount: filteredTxns.length,
-           totalAmount: filteredTxns.reduce((sum, txn) => sum + txn.amount, 0)
+           transactions: filteredTransactions,
+           transactionCount: filteredTransactions.length,
+           totalAmount: filteredTransactions.reduce(
+             (sum, txn) => sum + Number(txn.amount),
+             0
+           )
          };
        })
-       // remove items that end up with no transactions
        .filter(item => item.transactions.length > 0);
+   }, [
+     baseAggregatedData,
+     filterText,
+     showUncategorized,
+     showIncome
+   ]);
 
+   const uncategorizedTxList = useMemo(
+     () =>
+       baseAggregatedData.flatMap(item =>
+         item.transactions.filter(
+           txn => !txn.category || !txn.subcategory
+         )
+       ),
+     [baseAggregatedData]
+   );
 
-      // compute uncategorized transactions at App level
-        const uncategorizedTxList = aggregatedData
-          .flatMap(item => item.transactions.filter(txn => !txn.category));
+   const uncategorizedCount = uncategorizedTxList.length;
 
-        const uncategorizedCount = uncategorizedTxList.length;
+   const handleBulkApply = (selectedIds, category, subCategory) => {
+     console.log(
+       "Bulk apply:",
+       selectedIds,
+       category,
+       subCategory
+     );
 
-        const handleBulkApply = (selectedIds, category, subCategory) => {
-          // update logic here
-          console.log("Bulk apply:", selectedIds, category, subCategory);
-          setShowUncategorized(false); // optionally hide after apply
-        };
-      console.log("aggregatedData"+JSON.stringify(aggregatedData, null, 2))
+     setShowUncategorized(false);
+   };
 
    const periodLabel = getPeriodLabel(aggregatedData);
-   console.log("monthYearStrings=", periodLabel);
 
 const handleSaveAndClose = async (event) => {
 
@@ -121,7 +205,7 @@ const handleSaveAndClose = async (event) => {
      try {
              event.preventDefault();
 
-             const result = await saveTransactions(aggregatedData);
+             const result = await saveTransactions(uploadId, aggregatedData);
              setIsSaved(true);
            } catch (error) {
              console.error("Error saving the data:", error);

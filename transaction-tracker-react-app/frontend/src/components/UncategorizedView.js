@@ -18,9 +18,9 @@ export default function UncategorizedView({ count, transactionsData, onBulkApply
     setData(prevData => {
       const updatedData = { ...prevData };
 
-      selected.forEach(payeeKey => {
-        updatedData[payeeKey] = updatedData[payeeKey].map(item =>
-          !item.category // only uncategorized
+      if (Array.isArray(updatedData.transactions)) {
+        updatedData.transactions = updatedData.transactions.map(item =>
+          selected.includes(item.payee) && !item.category // only uncategorized
             ? {
                 ...item,
                 category: bulkCategory,
@@ -28,7 +28,7 @@ export default function UncategorizedView({ count, transactionsData, onBulkApply
               }
             : item
         );
-      });
+      }
 
       return updatedData;
     });

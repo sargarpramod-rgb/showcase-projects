@@ -1,8 +1,8 @@
 package com.transaction.controller;
 
-import com.github.fracpete.quicken4j.Transactions;
 import com.transaction.model.*;
 import com.transaction.service.CategoryService;
+import com.transaction.service.PayeeCategoryService;
 import com.transaction.service.TransactionService;
 import com.transaction.service.UploadService;
 import com.transaction.upload.TransactionFileReaderFactory;
@@ -21,10 +21,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.*;
 
-import static java.util.stream.Collectors.toMap;
+import static com.transaction.util.TransactionUtil.getTransactionsByPayeeSortedByAmount;
 
 
 @RestController
@@ -39,6 +38,9 @@ public class TransactionController {
     private TransactionService transactionService;
 
     @Autowired
+    private PayeeCategoryService payeeCategoryService;
+
+    @Autowired
     CategoryService categoryService;
 
     @Autowired
@@ -47,19 +49,17 @@ public class TransactionController {
     @Autowired
     TransactionFileReaderFactory fileReaderFactory;
 
-    @PostMapping("/transactions")
-    public ResponseEntity<Map<String, List<EnhancedTransaction>>> upload
+    @PostMapping("/transactions/upload")
+    public ResponseEntity<UploadResponse> upload
                 ( @AuthenticationPrincipal UserPrincipal user,
-              @RequestParam("file") MultipartFile file,
-             @RequestParam(value = "type", required = false) TransactionFileType typeHint) {
+                  @RequestParam("file") MultipartFile file,
+                  @RequestParam(value = "type", required = false) TransactionFileType typeHint) {
         try {
-
 
             Long userId = user.getUserId();
             byte[] bytes = file.getBytes();
             String fileHash = DigestUtils.md5DigestAsHex(bytes);
 
-            // ✅ Create/get upload entry
             Upload upload = uploadService.getOrCreateUpload(
                     userId,
                     file.getOriginalFilename(),
@@ -68,18 +68,34 @@ public class TransactionController {
 
             Long uploadId = upload.getUploadId();
 
-            // If already saved earlier → reuse DB data
             if (uploadService.shouldReuseFromDb(upload)) {
-               /* return ResponseEntity.ok(
-                        transactionService.getByUploadId(uploadId)
-                );*/
-            }
+                List<EnhancedTransaction> enhancedTransactionList =
+                        transactionService.getByUploadId(uploadId);
 
+                UploadResponse response = new UploadResponse(
+                        upload.getUploadId(),
+                        file.getOriginalFilename(),
+                        UploadStatus.SUCCESS,
+                        enhancedTransactionList
+                );
+
+                return ResponseEntity.ok(response);
+            }
 
             TransactionFileType resolvedType = fileReaderFactory.resolveType(file, typeHint);
             TransactionFileReaderStrategy strategy = fileReaderFactory.getStrategy(resolvedType);
             List<EnhancedTransaction> tranList = strategy.read(new ByteArrayInputStream(bytes));
-            return ResponseEntity.ok(transactionService.updateTransactionDetails(tranList));
+            transactionService.updateTransactionDetails(tranList,userId);
+
+
+            UploadResponse response = new UploadResponse(
+                    upload.getUploadId(),
+                    file.getOriginalFilename(),
+                    UploadStatus.PREVIEW,
+                    tranList
+            );
+
+            return ResponseEntity.ok(response);
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         } catch (UnsupportedFileTypeException e) {
@@ -99,10 +115,11 @@ public class TransactionController {
     }
 
 
-    @PostMapping("/save-transactions")
-    public ResponseEntity<String> saveTransactions(@RequestBody List<AggregatedTransactions> aggregatedTransactions) {
+    @PostMapping("/transactions/save")
+    public ResponseEntity<String> saveTransactions(@AuthenticationPrincipal UserPrincipal user,
+            @RequestBody SaveTransactionsRequest request) {
 
-        //TODO : Observation, in case transaction id is all 0000 it is not getting saved, need to randomize in that case.
+        List<AggregatedTransactions> aggregatedTransactions = request.aggregatedData();
         logger.info("aggregatedTransactions " + aggregatedTransactions);
 
         // 1. Save Payee to category, sub-category information.
@@ -113,25 +130,28 @@ public class TransactionController {
                             new PayeeCategoryResponse(aggregatedTransaction.getPayee()
                                     , aggregatedTransaction.getCategory()
                                     , aggregatedTransaction
-                                    .getSubcategory());
+                                    .getSubcategory(),user.getUserId());
             payeeCategoryResponses.add(payeeCategoryResponse);
         });
 
-        transactionService.savePayeeCategoryMappings(payeeCategoryResponses);
+        payeeCategoryService.savePayeeCategoryMappings(payeeCategoryResponses);
 
         // 2. Pass the transaction data
-        aggregatedTransactions.stream().forEach(aggregatedTransaction -> {
-            transactionService.saveTransactionsBatch(aggregatedTransaction.getEnhancedTransactionList());
+        aggregatedTransactions.forEach(aggregatedTransaction -> {
+            transactionService.saveTransactionsBatch(aggregatedTransaction.getEnhancedTransactionList(),user.getUserId());
         });
+
+        uploadService.markSuccess(request.uploadId());
 
         return ResponseEntity.ok("Data Saved Successfully");
     }
 
     @GetMapping("/transactions-summary-by/{year}")
-    public ResponseEntity<List<EnhancedTransaction>> summaryTransactionsByYear(@PathVariable int year) {
+    public ResponseEntity<List<EnhancedTransaction>> summaryTransactionsByYear(@AuthenticationPrincipal UserPrincipal user,
+            @PathVariable int year) {
 
         try {
-            List<EnhancedTransaction> transactionsByYear = transactionService.getTransactionsByYear(year);
+            List<EnhancedTransaction> transactionsByYear = transactionService.getTransactionsByYear(year,user.getUserId());
             return ResponseEntity.ok(transactionsByYear);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
