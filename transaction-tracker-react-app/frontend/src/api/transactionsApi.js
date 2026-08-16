@@ -76,3 +76,35 @@ export const saveSubcategories = async (category, subcategories) => {
   });
   return response.json();
 };
+
+export const sendChatQuery = async (query) => {
+  try {
+    const response = await fetch("http://localhost:8000/api/ai/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 503 || response.status === 502) {
+        throw new Error("SERVICE_UNAVAILABLE");
+      }
+      throw new Error(`HTTP_ERROR_${response.status}`);
+    }
+
+    return response.json();
+  } catch (err) {
+    // Handle network errors
+    if (err.message === "Failed to fetch") {
+      throw new Error("SERVICE_UNAVAILABLE");
+    }
+    // Re-throw if it's our custom error
+    if (err.message.startsWith("SERVICE_UNAVAILABLE") || err.message.startsWith("HTTP_ERROR")) {
+      throw err;
+    }
+    // Other errors
+    throw new Error("SERVICE_ERROR");
+  }
+};
