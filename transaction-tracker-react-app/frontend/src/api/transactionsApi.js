@@ -108,3 +108,13 @@ export const sendChatQuery = async (query) => {
     throw new Error("SERVICE_ERROR");
   }
 };
+
+export const fetchMonthlyTrends = async (year) => {
+  const response = await apiFetch(`/api/transactions-trend/monthly/${year}`);
+  return response.json();
+};
+
+export const fetchYearlyTrends = async () => {
+  const response = await apiFetch("/api/transactions-trend/yearly");
+  return response.json();
+};

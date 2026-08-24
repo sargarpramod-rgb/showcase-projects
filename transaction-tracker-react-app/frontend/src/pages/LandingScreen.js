@@ -11,6 +11,7 @@ import {
 } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import HistoryIcon from "@mui/icons-material/History";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import SettingsIcon from "@mui/icons-material/Settings";
 import LogoutIcon from "@mui/icons-material/Logout";
 import LoadingOverlay from "../components/LoadingOverlay";
@@ -20,7 +21,7 @@ import CategorySettingsDialog from "../components/dialogs/CategorySettingsDialog
 import { useAuth } from "../auth/AuthContext";
 import { useNavigate } from "react-router-dom";
 
-export default function LandingScreen({ onViewTransactionsClick,
+export default function LandingScreen({ onViewTransactionsClick, onViewTrendsClick,
             onLoadingChange,
             onDataChange,
             onActiveScreen}) {
@@ -117,7 +118,7 @@ export default function LandingScreen({ onViewTransactionsClick,
 
       {/* Options */}
       <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12} md={4}>
           <Paper
             elevation={0}
             sx={{
@@ -154,7 +155,7 @@ export default function LandingScreen({ onViewTransactionsClick,
           </Paper>
         </Grid>
 
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12} md={4}>
           <Paper
             elevation={0}
             sx={{
@@ -169,7 +170,7 @@ export default function LandingScreen({ onViewTransactionsClick,
               View Past Transactions
             </Typography>
             <Typography variant="body2" sx={{ color: "text.secondary", mb: 2 }}>
-              See your current year and last 3 months by default.
+              See your transactions by year with detailed categorization.
             </Typography>
             <Button
               variant="outlined"
@@ -178,6 +179,34 @@ export default function LandingScreen({ onViewTransactionsClick,
               onClick={onViewTransactionsClick}
             >
               View Transactions
+            </Button>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 3,
+              border: "1px solid #d5dbdb",
+              borderRadius: 2,
+              "&:hover": { borderColor: "success.main" }
+            }}
+          >
+            <TrendingUpIcon sx={{ fontSize: 40, color: "success.main", mb: 1 }} />
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+              Financial Trends
+            </Typography>
+            <Typography variant="body2" sx={{ color: "text.secondary", mb: 2 }}>
+              Analyze income, expenses, and investments month-on-month.
+            </Typography>
+            <Button
+              variant="outlined"
+              color="success"
+              size="small"
+              onClick={onViewTrendsClick}
+            >
+              View Trends
             </Button>
           </Paper>
         </Grid>

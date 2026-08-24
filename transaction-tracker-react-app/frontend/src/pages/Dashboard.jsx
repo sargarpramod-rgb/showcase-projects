@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import LandingScreen from "./LandingScreen";
 import UploadScreen from "./UploadScreen";
 import TransactionSummaryView from "../components/summary/TransactionSummaryView";
+import TrendAnalysis from "../components/TrendAnalysis";
 import ChatWindow from "../components/ChatWindow";
 import { uploadTransactions,saveTransactions } from "../api/transactionsApi";
 import LoadingOverlay from "../components/LoadingOverlay";
@@ -16,6 +17,7 @@ export default function Dashboard() {
   const [chatOpen, setChatOpen] = useState(false);
 
   const handleViewTransactionsClick = () => setActiveScreen("past");
+  const handleViewTrendsClick = () => setActiveScreen("trends");
   const handleBackToDashboard = () => setActiveScreen("landing");
 
 
@@ -24,6 +26,7 @@ export default function Dashboard() {
       {activeScreen === "landing" && (
         <LandingScreen
           onViewTransactionsClick={handleViewTransactionsClick}
+          onViewTrendsClick={handleViewTrendsClick}
           onLoadingChange={setLoading}
           onDataChange={setData}
           onActiveScreen={setActiveScreen}
@@ -49,6 +52,26 @@ export default function Dashboard() {
             onBack={handleBackToDashboard}
             onLoadingChange={setLoading}
         />
+      )}
+
+      {activeScreen === "trends" && (
+        <Box>
+          <Box sx={{ p: 2, display: "flex", justifyContent: "flex-start" }}>
+            <button 
+              onClick={handleBackToDashboard}
+              style={{
+                padding: "8px 16px",
+                backgroundColor: "#f0f0f0",
+                border: "1px solid #ccc",
+                borderRadius: "4px",
+                cursor: "pointer"
+              }}
+            >
+              ← Back to Landing
+            </button>
+          </Box>
+          <TrendAnalysis onLoadingChange={setLoading} />
+        </Box>
       )}
 
       {/* Chat Button (Floating Action Button) */}

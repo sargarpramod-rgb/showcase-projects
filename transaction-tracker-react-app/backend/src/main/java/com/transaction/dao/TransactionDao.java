@@ -37,6 +37,17 @@ public class TransactionDao {
             " AND t.subcategory_id = sc.id\n" +
             "WHERE YEAR(t.txn_date) = ? AND t.user_id = ?;\n";
 
+    private String GET_TRANSACTIONS_BY_USER_ID = "SELECT c.name AS category_name,\n" +
+            "       sc.name AS subcategory_name,\n" +
+            "       t.*\n" +
+            "FROM transactions t\n" +
+            "JOIN categories c\n" +
+            "  ON t.category_id = c.id\n" +
+            "JOIN subcategories sc\n" +
+            "  ON t.category_id = sc.category_id\n" +
+            " AND t.subcategory_id = sc.id\n" +
+            "WHERE t.user_id = ? ORDER BY t.txn_date DESC;\n";
+
     public Map<String, Long> populateCategoryMap() {
 
         return jdbcTemplate.query(
@@ -88,6 +99,14 @@ public class TransactionDao {
         return jdbcTemplate.query(
                 GET_TRANSACTIONS_BY_YEAR,
                 new Object[]{year,userId},
+                new EnhancedTransactionRowMapper()
+        );
+    }
+
+    public List<EnhancedTransaction> getByUserId(Long userId) {
+        return jdbcTemplate.query(
+                GET_TRANSACTIONS_BY_USER_ID,
+                new Object[]{userId},
                 new EnhancedTransactionRowMapper()
         );
     }

@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
+import java.math.BigDecimal;
 
 import static java.util.stream.Collectors.toMap;
 
@@ -43,6 +44,118 @@ public class TransactionService {
     public List<EnhancedTransaction> getTransactionsByYear(int year, Long userId) {
 
         return transactionDao.getByYear(year,userId);
+    }
+
+    public List<MonthlyTrendData> getMonthlyTrends(int year, Long userId) {
+        List<EnhancedTransaction> transactions = transactionDao.getByYear(year, userId);
+        return calculateMonthlyTrends(transactions);
+    }
+
+    public List<YearlyTrendData> getYearlyTrends(Long userId) {
+        List<EnhancedTransaction> transactions = transactionDao.getByUserId(userId);
+        return calculateYearlyTrends(transactions);
+    }
+
+    private List<MonthlyTrendData> calculateMonthlyTrends(List<EnhancedTransaction> transactions) {
+        Map<String, MonthlyTrendData> monthlyMap = new LinkedHashMap<>();
+        
+        // Initialize all 12 months
+        String[] months = {"January", "February", "March", "April", "May", "June", 
+                          "July", "August", "September", "October", "November", "December"};
+        
+        int currentYear = transactions.isEmpty() ? java.time.Year.now().getValue() : 
+                         LocalDate.parse(transactions.get(0).getDate().split(" TXN TIME ")[0],
+                         DateTimeFormatter.ofPattern("MM-dd-yyyy")).getYear();
+        
+        for (String month : months) {
+            monthlyMap.put(month, new MonthlyTrendData(month, currentYear, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+        }
+
+        // Process transactions
+        for (EnhancedTransaction txn : transactions) {
+            try {
+                String dateString = txn.getDate().split(" TXN TIME ")[0];
+                LocalDate date = null;
+                
+                List<DateTimeFormatter> formatters = Arrays.asList(
+                        DateTimeFormatter.ofPattern("MM-dd-yyyy"),
+                        DateTimeFormatter.ofPattern("dd/MM/yy")
+                );
+
+                for (DateTimeFormatter formatter : formatters) {
+                    try {
+                        date = LocalDate.parse(dateString, formatter);
+                        break;
+                    } catch (DateTimeParseException e) {
+                        // try next formatter
+                    }
+                }
+
+                if (date != null) {
+                    String monthName = months[date.getMonthValue() - 1];
+                    MonthlyTrendData trendData = monthlyMap.get(monthName);
+
+                    BigDecimal amount = new BigDecimal(txn.getAmount());
+                    if ("INCOME".equalsIgnoreCase(txn.getTxnType())) {
+                        trendData.addIncome(amount);
+                    } else if ("INVESTMENT".equalsIgnoreCase(txn.getTxnType())) {
+                        trendData.addInvestment(amount);
+                    } else {
+                        trendData.addExpense(amount);
+                    }
+                }
+            } catch (Exception e) {
+                // Skip malformed transactions
+            }
+        }
+
+        return new ArrayList<>(monthlyMap.values());
+    }
+
+    private List<YearlyTrendData> calculateYearlyTrends(List<EnhancedTransaction> transactions) {
+        Map<Integer, YearlyTrendData> yearlyMap = new TreeMap<>((a, b) -> Integer.compare(b, a)); // Sort descending
+        
+        for (EnhancedTransaction txn : transactions) {
+            try {
+                String dateString = txn.getDate().split(" TXN TIME ")[0];
+                LocalDate date = null;
+                
+                List<DateTimeFormatter> formatters = Arrays.asList(
+                        DateTimeFormatter.ofPattern("MM-dd-yyyy"),
+                        DateTimeFormatter.ofPattern("dd/MM/yy")
+                );
+
+                for (DateTimeFormatter formatter : formatters) {
+                    try {
+                        date = LocalDate.parse(dateString, formatter);
+                        break;
+                    } catch (DateTimeParseException e) {
+                        // try next formatter
+                    }
+                }
+
+                if (date != null) {
+                    int year = date.getYear();
+                    YearlyTrendData trendData = yearlyMap.computeIfAbsent(year, 
+                            k -> new YearlyTrendData(year, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+
+                    BigDecimal amount = new BigDecimal(txn.getAmount());
+                    if ("INCOME".equalsIgnoreCase(txn.getTxnType())) {
+                        trendData.addIncome(amount);
+                    } else if ("INVESTMENT".equalsIgnoreCase(txn.getTxnType())) {
+                        trendData.addInvestment(amount);
+                    } else {
+                        trendData.addExpense(amount);
+                    }
+                    
+                    trendData.setTransactionCount(trendData.getTransactionCount() + 1);
+                }
+            } catch (Exception e) {
+                // Skip malformed transactions
+            }
+        }
+
+        return new ArrayList<>(yearlyMap.values());
     }
 
 
@@ -103,9 +216,26 @@ public class TransactionService {
     }
 
 
+    // TODO : Normalize the payee before saving, save both the original and normalized payee name.
+
+        /*public String normalizePayee(String payee) {
+            if (payee == null) {
+                return null;
+            }
+
+            return payee.trim()
+                    .toUpperCase(Locale.ROOT)
+                    .replaceFirst("^(UPI|POS|NEFT|IMPS)[-\\s:/]*", "")
+                    .replaceAll("\\b(ORDER|TXN|REF)[-\\s:#]*\\d+\\b", "")
+                    .replaceAll("\\s+", " ")
+                    .trim();
+
+                    payee_name        = UPI-SWIGGY-923847
+            normalized_payee  = SWIGGY
+        }*/
+
     @Transactional
     public void saveTransactionsBatch(List<EnhancedTransaction> transactions, Long userId) {
-
 
         List<Object[]> batchArgs = transactions.stream()
                 .filter(txn -> Objects.nonNull(txn.getCategory())

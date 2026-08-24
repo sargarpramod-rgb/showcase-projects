@@ -424,9 +424,17 @@ public class HdfcBankStatementParser implements BankStatementParser {
         private float maxX = -Float.MAX_VALUE;
 
         void add(TextPosition tp) {
-            text.append(tp.getUnicode());
             float x = tp.getXDirAdj();
             float endX = x + tp.getWidthDirAdj();
+            
+            // If there's any visible gap from the last character, insert a space
+            // Use a lower threshold (0.1 = 10% of character width) to catch visual gaps
+            // that don't have actual space characters in the PDF
+            if (maxX > -Float.MAX_VALUE && (x - maxX) > Math.max(tp.getWidthDirAdj(), 2f) * 0.1f) {
+                text.append(' ');
+            }
+            
+            text.append(tp.getUnicode());
             minX = Math.min(minX, x);
             maxX = Math.max(maxX, endX);
         }

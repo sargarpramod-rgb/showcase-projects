@@ -49,11 +49,13 @@ public class TransactionController {
     @Autowired
     TransactionFileReaderFactory fileReaderFactory;
 
+    //TODO: Create another endpoint to upload files directly to s3 , in case it is very big file.
+
     @PostMapping("/transactions/upload")
     public ResponseEntity<UploadResponse> upload
-                ( @AuthenticationPrincipal UserPrincipal user,
-                  @RequestParam("file") MultipartFile file,
-                  @RequestParam(value = "type", required = false) TransactionFileType typeHint) {
+            (@AuthenticationPrincipal UserPrincipal user,
+             @RequestParam("file") MultipartFile file,
+             @RequestParam(value = "type", required = false) TransactionFileType typeHint) {
         try {
 
             Long userId = user.getUserId();
@@ -85,7 +87,7 @@ public class TransactionController {
             TransactionFileType resolvedType = fileReaderFactory.resolveType(file, typeHint);
             TransactionFileReaderStrategy strategy = fileReaderFactory.getStrategy(resolvedType);
             List<EnhancedTransaction> tranList = strategy.read(new ByteArrayInputStream(bytes));
-            transactionService.updateTransactionDetails(tranList,userId);
+            transactionService.updateTransactionDetails(tranList, userId);
 
 
             UploadResponse response = new UploadResponse(
@@ -107,7 +109,7 @@ public class TransactionController {
     @GetMapping("/transaction-categories")
     public ResponseEntity<List<CategoryResponse>> transactionCategories() {
         try {
-            List<CategoryResponse>  allCategories = categoryService.getAllCategories();
+            List<CategoryResponse> allCategories = categoryService.getAllCategories();
             return ResponseEntity.ok(allCategories);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
@@ -117,7 +119,7 @@ public class TransactionController {
 
     @PostMapping("/transactions/save")
     public ResponseEntity<String> saveTransactions(@AuthenticationPrincipal UserPrincipal user,
-            @RequestBody SaveTransactionsRequest request) {
+                                                   @RequestBody SaveTransactionsRequest request) {
 
         List<AggregatedTransactions> aggregatedTransactions = request.aggregatedData();
         logger.info("aggregatedTransactions " + aggregatedTransactions);
@@ -126,11 +128,11 @@ public class TransactionController {
         List<PayeeCategoryResponse> payeeCategoryResponses = new ArrayList<>();
 
         aggregatedTransactions.forEach(aggregatedTransaction -> {
-                    PayeeCategoryResponse payeeCategoryResponse =
-                            new PayeeCategoryResponse(aggregatedTransaction.getPayee()
-                                    , aggregatedTransaction.getCategory()
-                                    , aggregatedTransaction
-                                    .getSubcategory(),user.getUserId());
+            PayeeCategoryResponse payeeCategoryResponse =
+                    new PayeeCategoryResponse(aggregatedTransaction.getPayee()
+                            , aggregatedTransaction.getCategory()
+                            , aggregatedTransaction
+                            .getSubcategory(), user.getUserId());
             payeeCategoryResponses.add(payeeCategoryResponse);
         });
 
@@ -138,7 +140,7 @@ public class TransactionController {
 
         // 2. Pass the transaction data
         aggregatedTransactions.forEach(aggregatedTransaction -> {
-            transactionService.saveTransactionsBatch(aggregatedTransaction.getEnhancedTransactionList(),user.getUserId());
+            transactionService.saveTransactionsBatch(aggregatedTransaction.getEnhancedTransactionList(), user.getUserId());
         });
 
         uploadService.markSuccess(request.uploadId());
@@ -148,14 +150,38 @@ public class TransactionController {
 
     @GetMapping("/transactions-summary-by/{year}")
     public ResponseEntity<List<EnhancedTransaction>> summaryTransactionsByYear(@AuthenticationPrincipal UserPrincipal user,
-            @PathVariable int year) {
+                                                                               @PathVariable int year) {
 
         try {
-            List<EnhancedTransaction> transactionsByYear = transactionService.getTransactionsByYear(year,user.getUserId());
+            List<EnhancedTransaction> transactionsByYear = transactionService.getTransactionsByYear(year, user.getUserId());
             return ResponseEntity.ok(transactionsByYear);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         }
     }
 
+    @GetMapping("/transactions-trend/monthly/{year}")
+    public ResponseEntity<List<MonthlyTrendData>> monthlyTrends(@AuthenticationPrincipal UserPrincipal user,
+                                                                @PathVariable int year) {
+
+        try {
+            List<MonthlyTrendData> monthlyTrends = transactionService.getMonthlyTrends(year, user.getUserId());
+            return ResponseEntity.ok(monthlyTrends);
+        } catch (Exception e) {
+            logger.error("Error fetching monthly trends", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
+    }
+
+    @GetMapping("/transactions-trend/yearly")
+    public ResponseEntity<List<YearlyTrendData>> yearlyTrends(@AuthenticationPrincipal UserPrincipal user) {
+
+        try {
+            List<YearlyTrendData> yearlyTrends = transactionService.getYearlyTrends(user.getUserId());
+            return ResponseEntity.ok(yearlyTrends);
+        } catch (Exception e) {
+            logger.error("Error fetching yearly trends", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
+    }
 }
