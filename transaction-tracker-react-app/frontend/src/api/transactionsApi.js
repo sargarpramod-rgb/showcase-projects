@@ -1,10 +1,10 @@
-import config from "../config/config";
+import { backendFetch } from "./backendFetch";
 
 // Shared fetch wrapper — cookies sent automatically via credentials: "include"
 const apiFetch = async (url, options = {}) => {
   const isFormData = options.body instanceof FormData;
 
-  const response = await fetch(`${config.API_BASE}${url}`, {
+  const response = await backendFetch(url, {
     ...options,
     credentials: "include",
     headers: {
@@ -109,12 +109,17 @@ export const sendChatQuery = async (query) => {
   }
 };
 
-export const fetchMonthlyTrends = async (year) => {
-  const response = await apiFetch(`/api/transactions-trend/monthly/${year}`);
+export const fetchMonthlyTrends = async (year, options = {}) => {
+  const response = await apiFetch(`/api/transactions-trend/monthly/${year}`, options);
   return response.json();
 };
 
-export const fetchYearlyTrends = async () => {
-  const response = await apiFetch("/api/transactions-trend/yearly");
+export const fetchYearlyTrends = async (options = {}) => {
+  const response = await apiFetch("/api/transactions-trend/yearly", options);
+  return response.json();
+};
+
+export const fetchCategoryTrends = async (year, options = {}) => {
+  const response = await apiFetch(`/api/transactions-trend/categories/${year}`, options);
   return response.json();
 };

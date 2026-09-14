@@ -44,8 +44,7 @@ public class UploadService {
 
     //TODO : logic commented out till transactions have upload_id in it.
     public boolean shouldReuseFromDb(Upload upload) {
-        return false;
-        //return UploadStatus.SUCCESS.equals(upload.getStatus());
+        return UploadStatus.SUCCESS.equals(upload.getStatus());
     }
 
     public void markSuccess(Long uploadId) {

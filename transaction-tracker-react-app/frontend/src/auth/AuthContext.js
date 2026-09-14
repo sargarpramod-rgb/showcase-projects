@@ -1,28 +1,20 @@
 import { createContext, useContext, useState, useEffect } from "react";
+import { backendFetch } from "../api/backendFetch";
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  // Only track display name — never the token
   const [user, setUser] = useState(() => localStorage.getItem("loggedInUser") || null);
   const [loading, setLoading] = useState(true);
+  const [logoutError, setLogoutError] = useState(null);
 
   useEffect(() => {
-    // On app load, verify session is still valid with backend
-    // This handles page refresh — cookie exists but we need to confirm it's valid
     const verifySession = async () => {
       try {
-        const response = await fetch("/auth/verify", {
-          method: "GET",
-          credentials: "include", // sends HttpOnly cookie automatically
-        });
-
+        const response = await backendFetch("/auth/verify", { cache: "no-store" });
         if (response.ok) {
-          // Session valid — restore user from localStorage
-          const name = localStorage.getItem("loggedInUser");
-          setUser(name);
+          setUser(localStorage.getItem("loggedInUser"));
         } else {
-          // Cookie expired or invalid — clear everything
           localStorage.removeItem("loggedInUser");
           setUser(null);
         }
@@ -33,38 +25,32 @@ export const AuthProvider = ({ children }) => {
         setLoading(false);
       }
     };
-
     verifySession();
   }, []);
 
   const login = () => {
-    const name = localStorage.getItem("loggedInUser");
-    setUser(name);
+    setLogoutError(null);
+    setUser(localStorage.getItem("loggedInUser"));
   };
 
   const logout = async () => {
+    setLogoutError(null);
     try {
-      await fetch("/auth/logout", {
-        method: "POST",
-        credentials: "include", // sends cookies so backend can blacklist them
-      });
+      const response = await backendFetch("/auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error("Server logout failed");
+      return true;
     } catch (error) {
-      console.error("Logout error:", error);
+      setLogoutError("Server logout could not be confirmed. Your session may still be active.");
+      return false;
     } finally {
-      // Always clear local state even if backend call fails
       localStorage.removeItem("loggedInUser");
       setUser(null);
     }
   };
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      login,
-      logout,
-      isAuthenticated: !!user,
-      loading           // use this to avoid flash of login page on refresh
-    }}>
+    <AuthContext.Provider value={{ user, login, logout, logoutError, isAuthenticated: !!user, loading }}>
+      {logoutError && <p role="alert">{logoutError}</p>}
       {children}
     </AuthContext.Provider>
   );

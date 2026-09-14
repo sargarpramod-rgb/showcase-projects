@@ -140,7 +140,8 @@ public class TransactionController {
 
         // 2. Pass the transaction data
         aggregatedTransactions.forEach(aggregatedTransaction -> {
-            transactionService.saveTransactionsBatch(aggregatedTransaction.getEnhancedTransactionList(), user.getUserId());
+            transactionService.saveTransactionsBatch(aggregatedTransaction.getEnhancedTransactionList(),
+                    request.uploadId(), user.getUserId());
         });
 
         uploadService.markSuccess(request.uploadId());
@@ -167,6 +168,8 @@ public class TransactionController {
         try {
             List<MonthlyTrendData> monthlyTrends = transactionService.getMonthlyTrends(year, user.getUserId());
             return ResponseEntity.ok(monthlyTrends);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
         } catch (Exception e) {
             logger.error("Error fetching monthly trends", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
@@ -181,6 +184,19 @@ public class TransactionController {
             return ResponseEntity.ok(yearlyTrends);
         } catch (Exception e) {
             logger.error("Error fetching yearly trends", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
+    }
+
+    @GetMapping("/transactions-trend/categories/{year}")
+    public ResponseEntity<List<CategoryTrendData>> categoryTrends(@AuthenticationPrincipal UserPrincipal user,
+                                                                   @PathVariable int year) {
+        try {
+            return ResponseEntity.ok(transactionService.getCategoryTrends(year, user.getUserId()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            logger.error("Error fetching category trends", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         }
     }

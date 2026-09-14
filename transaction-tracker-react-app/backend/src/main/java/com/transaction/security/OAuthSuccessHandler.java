@@ -24,12 +24,14 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
     private CookieService cookieService;
 
     private UserService userService;
+    private final AuthSessionService sessions;
 
-    public OAuthSuccessHandler(String frontendUrl, JwtService jwtService, CookieService cookieService, UserService userService) {
+    public OAuthSuccessHandler(String frontendUrl, JwtService jwtService, CookieService cookieService, UserService userService, AuthSessionService sessions) {
         this.frontendUrl = frontendUrl;
         this.jwtService = jwtService;
         this.cookieService = cookieService;
         this.userService = userService;
+        this.sessions = sessions;
     }
 
     @Override
@@ -53,8 +55,9 @@ public class OAuthSuccessHandler implements AuthenticationSuccessHandler {
         Long userId = user.getUserId();
 
         // Generate both tokens
-        String accessToken  = jwtService.generateToken(userId, email,name,"google");
-        String refreshToken = jwtService.generateRefreshToken(userId, email,name,"google");
+        Map<String, String> tokens = sessions.create(user, email, name, "google");
+        String accessToken = tokens.get("accessToken");
+        String refreshToken = tokens.get("refreshToken");
 
         // Set as HttpOnly cookies — never expose in URL or response body
         cookieService.setAccessTokenCookie(response, accessToken, jwtService.getAccessTokenCookieMaxAgeSeconds());

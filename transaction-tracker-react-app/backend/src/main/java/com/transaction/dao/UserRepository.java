@@ -72,7 +72,7 @@ public class UserRepository {
     }
 
     public User findById(Long userId) {
-        String sql = "SELECT * FROM users WHERE user_id = ?";
+        String sql = "SELECT u.*, ua.auth_provider, ua.auth_provider_user_id FROM users u JOIN user_auth_provider ua ON u.user_id = ua.user_id WHERE u.user_id = ? AND ua.auth_provider = 'google'";
         return jdbcTemplate.queryForObject(sql, new Object[]{userId}, new UserRowMapper());
     }
 }

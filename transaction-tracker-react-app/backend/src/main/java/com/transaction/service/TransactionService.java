@@ -2,12 +2,15 @@ package com.transaction.service;
 
 import com.transaction.dao.TransactionDao;
 import com.transaction.model.*;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.Clock;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
@@ -19,6 +22,7 @@ import static java.util.stream.Collectors.toMap;
 public class TransactionService {
 
     private final JdbcTemplate jdbcTemplate;
+    private final Clock trendClock;
 
     @Autowired
     Map<String,Long> categoryMap;
@@ -34,7 +38,12 @@ public class TransactionService {
 
     @Autowired
     public TransactionService(JdbcTemplate jdbcTemplate) {
+        this(jdbcTemplate, Clock.system(ZoneId.of("Asia/Kolkata")));
+    }
+
+    TransactionService(JdbcTemplate jdbcTemplate, Clock trendClock) {
         this.jdbcTemplate = jdbcTemplate;
+        this.trendClock = trendClock;
     }
 
     public List<EnhancedTransaction> getByUploadId(Long uploadId) {
@@ -47,117 +56,31 @@ public class TransactionService {
     }
 
     public List<MonthlyTrendData> getMonthlyTrends(int year, Long userId) {
-        List<EnhancedTransaction> transactions = transactionDao.getByYear(year, userId);
-        return calculateMonthlyTrends(transactions);
+        LocalDate today = LocalDate.now(trendClock);
+        if (year < 1 || year > today.getYear()) {
+            throw new IllegalArgumentException("Year must be between 1 and the current reporting year");
+        }
+        LocalDate start = LocalDate.of(year, 1, 1);
+        LocalDate end = year == today.getYear() ? today.plusDays(1) : start.plusYears(1);
+        int months = year == today.getYear() ? today.getMonthValue() : 12;
+        return transactionDao.getMonthlyTrends(userId, start, end, months, today);
     }
 
     public List<YearlyTrendData> getYearlyTrends(Long userId) {
-        List<EnhancedTransaction> transactions = transactionDao.getByUserId(userId);
-        return calculateYearlyTrends(transactions);
+        LocalDate today = LocalDate.now(trendClock);
+        return transactionDao.getYearlyTrends(userId, LocalDate.of(1, 1, 1), today.plusDays(1), today);
     }
 
-    private List<MonthlyTrendData> calculateMonthlyTrends(List<EnhancedTransaction> transactions) {
-        Map<String, MonthlyTrendData> monthlyMap = new LinkedHashMap<>();
-        
-        // Initialize all 12 months
-        String[] months = {"January", "February", "March", "April", "May", "June", 
-                          "July", "August", "September", "October", "November", "December"};
-        
-        int currentYear = transactions.isEmpty() ? java.time.Year.now().getValue() : 
-                         LocalDate.parse(transactions.get(0).getDate().split(" TXN TIME ")[0],
-                         DateTimeFormatter.ofPattern("MM-dd-yyyy")).getYear();
-        
-        for (String month : months) {
-            monthlyMap.put(month, new MonthlyTrendData(month, currentYear, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+    public List<CategoryTrendData> getCategoryTrends(int year, Long userId) {
+        LocalDate today = LocalDate.now(trendClock);
+        if (year < 1 || year > today.getYear()) {
+            throw new IllegalArgumentException("Year must be between 1 and the current reporting year");
         }
-
-        // Process transactions
-        for (EnhancedTransaction txn : transactions) {
-            try {
-                String dateString = txn.getDate().split(" TXN TIME ")[0];
-                LocalDate date = null;
-                
-                List<DateTimeFormatter> formatters = Arrays.asList(
-                        DateTimeFormatter.ofPattern("MM-dd-yyyy"),
-                        DateTimeFormatter.ofPattern("dd/MM/yy")
-                );
-
-                for (DateTimeFormatter formatter : formatters) {
-                    try {
-                        date = LocalDate.parse(dateString, formatter);
-                        break;
-                    } catch (DateTimeParseException e) {
-                        // try next formatter
-                    }
-                }
-
-                if (date != null) {
-                    String monthName = months[date.getMonthValue() - 1];
-                    MonthlyTrendData trendData = monthlyMap.get(monthName);
-
-                    BigDecimal amount = new BigDecimal(txn.getAmount());
-                    if ("INCOME".equalsIgnoreCase(txn.getTxnType())) {
-                        trendData.addIncome(amount);
-                    } else if ("INVESTMENT".equalsIgnoreCase(txn.getTxnType())) {
-                        trendData.addInvestment(amount);
-                    } else {
-                        trendData.addExpense(amount);
-                    }
-                }
-            } catch (Exception e) {
-                // Skip malformed transactions
-            }
-        }
-
-        return new ArrayList<>(monthlyMap.values());
+        LocalDate start = LocalDate.of(year, 1, 1);
+        LocalDate end = year == today.getYear() ? today.plusDays(1) : start.plusYears(1);
+        int months = year == today.getYear() ? today.getMonthValue() : 12;
+        return transactionDao.getCategoryTrends(userId, start, end, months);
     }
-
-    private List<YearlyTrendData> calculateYearlyTrends(List<EnhancedTransaction> transactions) {
-        Map<Integer, YearlyTrendData> yearlyMap = new TreeMap<>((a, b) -> Integer.compare(b, a)); // Sort descending
-        
-        for (EnhancedTransaction txn : transactions) {
-            try {
-                String dateString = txn.getDate().split(" TXN TIME ")[0];
-                LocalDate date = null;
-                
-                List<DateTimeFormatter> formatters = Arrays.asList(
-                        DateTimeFormatter.ofPattern("MM-dd-yyyy"),
-                        DateTimeFormatter.ofPattern("dd/MM/yy")
-                );
-
-                for (DateTimeFormatter formatter : formatters) {
-                    try {
-                        date = LocalDate.parse(dateString, formatter);
-                        break;
-                    } catch (DateTimeParseException e) {
-                        // try next formatter
-                    }
-                }
-
-                if (date != null) {
-                    int year = date.getYear();
-                    YearlyTrendData trendData = yearlyMap.computeIfAbsent(year, 
-                            k -> new YearlyTrendData(year, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
-
-                    BigDecimal amount = new BigDecimal(txn.getAmount());
-                    if ("INCOME".equalsIgnoreCase(txn.getTxnType())) {
-                        trendData.addIncome(amount);
-                    } else if ("INVESTMENT".equalsIgnoreCase(txn.getTxnType())) {
-                        trendData.addInvestment(amount);
-                    } else {
-                        trendData.addExpense(amount);
-                    }
-                    
-                    trendData.setTransactionCount(trendData.getTransactionCount() + 1);
-                }
-            } catch (Exception e) {
-                // Skip malformed transactions
-            }
-        }
-
-        return new ArrayList<>(yearlyMap.values());
-    }
-
 
     @Transactional
     public void savePayeeCategoryMappings(List<PayeeCategoryResponse> mappings) {
@@ -235,14 +158,16 @@ public class TransactionService {
         }*/
 
     @Transactional
-    public void saveTransactionsBatch(List<EnhancedTransaction> transactions, Long userId) {
+    public void saveTransactionsBatch(List<EnhancedTransaction> transactions, Long uploadId, Long userId) {
 
         List<Object[]> batchArgs = transactions.stream()
-                .filter(txn -> Objects.nonNull(txn.getCategory())
-                        && Objects.nonNull(txn.getSubcategory()))
+                /*.filter(txn -> Objects.nonNull(txn.getCategory())
+                        && Objects.nonNull(txn.getSubcategory()))*/
+                .filter(txn -> StringUtils.isNotEmpty(txn.getDate()))
                 .map(txn -> {
-                    Long categoryId = categoryMap.get(txn.getCategory());
-                    Long subCategoryId = getSubCategoryId(txn.getCategory(), txn.getSubcategory());
+
+                    Long categoryId = txn.getCategory() != null ? categoryMap.get(txn.getCategory()) : null;
+                    Long subCategoryId = txn.getCategory() != null ? getSubCategoryId(txn.getCategory(), txn.getSubcategory()) : null;
 
                     String dateString = txn.getDate();
 
@@ -252,7 +177,8 @@ public class TransactionService {
                     // Define possible formatters
                     List<DateTimeFormatter> formatters = Arrays.asList(
                             DateTimeFormatter.ofPattern("MM-dd-yyyy"), // e.g. 07-01-2025
-                            DateTimeFormatter.ofPattern("dd/MM/yy")    // e.g. 01/06/25
+                            DateTimeFormatter.ofPattern("dd/MM/yy"),    // e.g. 01/06/25
+                            DateTimeFormatter.ofPattern("yyyy-MM-dd")
                     );
 
                     for (DateTimeFormatter formatter : formatters) {
@@ -267,6 +193,7 @@ public class TransactionService {
                     return new Object[]{
                             txn.getTransactionId(),
                             userId,
+                            uploadId,
                             localDate,
                             dateString,
                             txn.getPayee(),
@@ -279,14 +206,9 @@ public class TransactionService {
                 })
                 .toList();
 
-        String sql = """
-                MERGE INTO transactions (transaction_id,user_id, txn_date,txn_date_str, payee, payee_full_name, amount, txn_type, category_id, subcategory_id)
-                KEY(transaction_id)
-                VALUES (?, ?,?, ?,?, ?, ?, ?, ?, ?);
-                
-        """;
+        transactionDao.saveTransactions(batchArgs);
 
-        jdbcTemplate.batchUpdate(sql, batchArgs);
+
 
         //transactionDao.saveAll();
     }

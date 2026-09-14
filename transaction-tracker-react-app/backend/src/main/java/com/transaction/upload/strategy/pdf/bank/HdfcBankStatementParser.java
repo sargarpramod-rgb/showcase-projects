@@ -1,7 +1,6 @@
 package com.transaction.upload.strategy.pdf.bank;
 
 
-import com.github.fracpete.quicken4j.Transactions;
 import com.transaction.model.EnhancedTransaction;
 import com.transaction.upload.strategy.pdf.BankStatementParser;
 import com.transaction.util.TransactionUtil;
@@ -18,16 +17,10 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static java.util.concurrent.CompletableFuture.supplyAsync;
 
 @Component
 public class HdfcBankStatementParser implements BankStatementParser {
@@ -56,82 +49,58 @@ public class HdfcBankStatementParser implements BankStatementParser {
 
     @Override
     public List<EnhancedTransaction> parse(PDDocument document) throws IOException {
-
+        long pdfStart = System.nanoTime();
 
         List<PDPage> pages = new ArrayList<>();
         document.getPages().forEach(pages::add);
 
+        // This must remain on the same thread as all other access to this PDDocument.
         ColumnBoundaries boundaries = getColumnBoundariesForFirstPageWithHeaderRows(document);
-        ExecutorService executor = Executors.newFixedThreadPool(5);
 
-        List<CompletableFuture<List<EnhancedTransaction>>> completableFutureList =
-                IntStream.range(0, pages.size()).mapToObj(pageIndex -> {
+        List<EnhancedTransaction> transactionList = new ArrayList<>();
+        List<Integer> errorPageIndexes = new ArrayList<>();
 
+        // PDDocument is not thread-safe. Process pages sequentially; parallelism, if needed,
+        // should be introduced only after data has been copied out of PDFBox-owned objects.
+        for (int pageIndex = 0; pageIndex < pages.size(); pageIndex++) {
             PDPage page = pages.get(pageIndex);
-            return supplyAsync(() -> {
-                try {
-                    return parsePage(document, pageIndex, page, boundaries);
-                } catch (IOException e) {
-                    // Handle Exception properly.
-                    throw new RuntimeException(e);
-                }
-            },executor)
-                .exceptionally(ex -> {
-                        log.error("Error parsing page {}", pageIndex, ex);
-                        return Collections.emptyList();
-                    });
-        }).toList();
-
-        // 4. Combine all futures into a single master future
-        CompletableFuture<Void> allFutures = CompletableFuture.allOf(
-                completableFutureList.toArray(new CompletableFuture[0])
-        );
-
-        // 5. Block and merge all the results together once everything completes
-        List<EnhancedTransaction> transactionList = allFutures.thenApply(v ->
-
-                        IntStream.range(0,completableFutureList.size())
-                                .mapToObj(i -> {
-                                    try {
-                                        return completableFutureList.get(i).join();
-                                    } catch (Exception e) {
-                                        log.error("Error joining future for page {}", i, e);
-                                        return Collections.<EnhancedTransaction>emptyList();
-                                    }
-                                })
-                                .flatMap(Collection::stream)
-                                .collect(Collectors.toList())
-        ).join();// block main thread until the entire batch is done
-
-
-
-        executor.shutdown();
-        try {
-            executor.awaitTermination(5, TimeUnit.MINUTES);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            try {
+                parsePage(document, pageIndex, page, boundaries,transactionList);
+            } catch (IOException | RuntimeException ex) {
+                errorPageIndexes.add(pageIndex);
+                log.error("Error parsing page {}. Continuing with remaining pages.", pageIndex + 1, ex);
+            }
         }
 
+        if (!errorPageIndexes.isEmpty()) {
+            log.warn("PDF parsing completed with failures on page(s): {}",
+                    errorPageIndexes.stream().map(i -> i + 1).toList());
+        }
 
-        // Whatever transaction was still open when the document ended needs to be flushed.
-        //accumulator.flush(results);
+        log.info("Total time taken for parsing entire PDF is {} ms",
+                (System.nanoTime() - pdfStart) / 1_000_000);
 
         return transactionList;
     }
 
-    private List<EnhancedTransaction> parsePage(PDDocument document, int pageIndex, PDPage page, ColumnBoundaries boundaries) throws IOException {
-        float columnHeaderY;
-        float statementLineY = findTextY(document, pageIndex, STATEMENT_LINE_ANCHOR);
+    private List<EnhancedTransaction> parsePage(PDDocument document, int pageIndex, PDPage page, ColumnBoundaries boundaries,
+                                                List<EnhancedTransaction> transactionList) throws IOException {
+        long pageStart = System.nanoTime();
+
+        // Find both anchors in one PDFTextStripper pass instead of scanning the page twice.
+        long anchorStart = System.nanoTime();
+        PageAnchors anchors = findPageAnchors(document, pageIndex);
+        log.debug("Page {} stage findAnchors took {} ms", pageIndex + 1,
+                (System.nanoTime() - anchorStart) / 1_000_000);
+
+        float statementLineY = anchors.statementLineY();
         if (statementLineY < 0) {
             log.debug("Page {} has no '{}' anchor — skipping", pageIndex + 1, STATEMENT_LINE_ANCHOR);
-            return new ArrayList<>();
+            return Collections.emptyList();
         }
 
-        // Column header row only exists on page 1; later pages: table starts right after statement line
-        columnHeaderY = -1;
-        float tableStartY = Math.max(columnHeaderY, statementLineY);
-
-        float footerY = findTextY(document, pageIndex, FOOTER_ANCHOR);
+        float tableStartY = statementLineY;
+        float footerY = anchors.footerY();
         float tableEndY = footerY > 0 ? footerY : page.getMediaBox().getHeight();
 
         if (tableEndY <= tableStartY) {
@@ -139,19 +108,29 @@ public class HdfcBankStatementParser implements BankStatementParser {
             return new ArrayList<>();
         }
 
+        long extractStart = System.nanoTime();
         RowExtractor extractor = new RowExtractor(tableStartY, tableEndY, boundaries);
         extractor.setStartPage(pageIndex + 1);
         extractor.setEndPage(pageIndex + 1);
         extractor.getText(document);
+        log.debug("Page {} stage pdfTextExtraction took {} ms", pageIndex + 1,
+                (System.nanoTime() - extractStart) / 1_000_000);
 
+        long rowsStart = System.nanoTime();
         List<Row> rows = extractor.buildRows();
+        log.debug("Page {} stage buildRows took {} ms", pageIndex + 1,
+                (System.nanoTime() - rowsStart) / 1_000_000);
 
-        List<EnhancedTransaction> results = new ArrayList<>();
-        // Moving this inside loop, need to
+        long assemblyStart = System.nanoTime();
+        //List<EnhancedTransaction> results = new ArrayList<>();
         TransactionAccumulator accumulator = new TransactionAccumulator();
-        accumulator.consume(rows, results);
+        accumulator.consume(rows, transactionList);
+        log.debug("Page {} stage transactionAssembly took {} ms", pageIndex + 1,
+                (System.nanoTime() - assemblyStart) / 1_000_000);
+        log.debug("Page {} stage TOTAL_PAGE took {} ms", pageIndex + 1,
+                (System.nanoTime() - pageStart) / 1_000_000);
 
-        return results;
+        return transactionList;
     }
 
     private ColumnBoundaries getColumnBoundariesForFirstPageWithHeaderRows(PDDocument document) throws IOException {
@@ -173,6 +152,56 @@ public class HdfcBankStatementParser implements BankStatementParser {
     }
 
     // ---------- table boundary detection ----------
+
+    private PageAnchors findPageAnchors(PDDocument document, int pageIndex) throws IOException {
+        PageAnchorFinder finder = new PageAnchorFinder();
+        finder.setStartPage(pageIndex + 1);
+        finder.setEndPage(pageIndex + 1);
+        finder.getText(document);
+        return new PageAnchors(
+                finder.resolveY(STATEMENT_LINE_ANCHOR),
+                finder.resolveY(FOOTER_ANCHOR)
+        );
+    }
+
+    private record PageAnchors(float statementLineY, float footerY) {}
+
+    /**
+     * Captures page text and the Y coordinate associated with each captured character once,
+     * allowing multiple anchors to be resolved without rerunning PDFTextStripper.
+     */
+    private static class PageAnchorFinder extends PDFTextStripper {
+        private final StringBuilder buffer = new StringBuilder();
+        private final List<Float> yPerCharIndex = new ArrayList<>();
+
+        PageAnchorFinder() throws IOException {
+            setSortByPosition(true);
+        }
+
+        @Override
+        protected void writeString(String text, List<TextPosition> positions) throws IOException {
+            if (!positions.isEmpty()) {
+                float y = positions.get(0).getYDirAdj();
+                for (int i = 0; i < text.length(); i++) {
+                    yPerCharIndex.add(y);
+                }
+                buffer.append(text);
+            }
+            buffer.append(' ');
+            yPerCharIndex.add(yPerCharIndex.isEmpty() ? 0f : yPerCharIndex.get(yPerCharIndex.size() - 1));
+            super.writeString(text, positions);
+        }
+
+        float resolveY(String targetText) {
+            String normalized = buffer.toString().replaceAll("\\s+", " ").toLowerCase();
+            String target = targetText.replaceAll("\\s+", " ").toLowerCase();
+            int idx = normalized.indexOf(target);
+            if (idx < 0 || idx >= yPerCharIndex.size()) {
+                return -1;
+            }
+            return yPerCharIndex.get(idx) + 2;
+        }
+    }
 
     private float findTextY(PDDocument document, int pageIndex, String targetText) throws IOException {
         HeaderPositionFinder finder = new HeaderPositionFinder(targetText);
@@ -426,14 +455,14 @@ public class HdfcBankStatementParser implements BankStatementParser {
         void add(TextPosition tp) {
             float x = tp.getXDirAdj();
             float endX = x + tp.getWidthDirAdj();
-            
+
             // If there's any visible gap from the last character, insert a space
             // Use a lower threshold (0.1 = 10% of character width) to catch visual gaps
             // that don't have actual space characters in the PDF
             if (maxX > -Float.MAX_VALUE && (x - maxX) > Math.max(tp.getWidthDirAdj(), 2f) * 0.1f) {
                 text.append(' ');
             }
-            
+
             text.append(tp.getUnicode());
             minX = Math.min(minX, x);
             maxX = Math.max(maxX, endX);
@@ -694,57 +723,57 @@ public class HdfcBankStatementParser implements BankStatementParser {
 
             IntStream.range(0, rows.size()).forEach(index -> {
 
-                Row  row = rows.get(index);
+                        Row  row = rows.get(index);
 
-                Matcher dateMatcher = DATE_PATTERN.matcher(row.dateText);
+                        Matcher dateMatcher = DATE_PATTERN.matcher(row.dateText);
 
-                if (!row.dateText.isEmpty() && dateMatcher.find()) {
-                    // New transaction detected — close out the previous one first.
-                    flush(results);
+                        if (!row.dateText.isEmpty() && dateMatcher.find()) {
+                            // New transaction detected — close out the previous one first.
+                            flush(results);
 
-                    LocalDate parsedDate = null;
-                    try {
-                        parsedDate = LocalDate.parse(dateMatcher.group(), DATE_FMT);
-                    } catch (Exception e) {
-                        pendingDate = null;
+                            LocalDate parsedDate = null;
+                            try {
+                                parsedDate = LocalDate.parse(dateMatcher.group(), DATE_FMT);
+                            } catch (Exception e) {
+                                pendingDate = null;
+                            }
+
+                            pendingTransactionId = row.refNoText;
+                            pendingDate = parsedDate;
+                            pendingNarration = row.narrationText;
+                            pendingValueDate = row.valueDateText;
+
+                            AmountCalc amountCalc = getAmountCalc(row.withdrawalText, row.depositText);
+                            pendingAmount = amountCalc.amount;
+                            txnType = amountCalc.type;
+                        } else if (index == rows.size() - 1) {
+                            // Handles case when last transaction on the page is with date, with other details spanning to next page.
+                            if(pendingDate == null) {
+                                EnhancedTransaction txn = new EnhancedTransaction();
+                                txn.setTransactionId(row.refNoText);
+                                txn.setDate(row.dateText);
+
+                                TransactionUtil.setPayeeDetails(txn,row.narrationText);
+                                // txn.setPayee(pendingNarration);
+                                AmountCalc amountCalc = getAmountCalc(row.withdrawalText, row.depositText);
+                                txn.setAmount(amountCalc.amount.doubleValue());
+                                txn.setTxnType(amountCalc.type);
+                                // TODO: wire pendingValueDate ("01/06/26" style string, parse with DATE_FMT)
+                                // into EnhancedTransaction once that model exposes a value-date field/setter.
+                                results.add(txn);
+                            } else {
+                                // This is case where last row on the page is already having row before with date and possibly there
+                                // is another row with description spanning to the next page.
+                                flush(results);
+                            }
+                        }
+                        else if (pendingDate != null && !row.narrationText.isEmpty() && !row.narrationText.equalsIgnoreCase(FOOTER_ANCHOR)) {
+                            // Wrapped narration continuation — same transaction, no new date on this line.
+                            pendingNarration = (pendingNarration == null || pendingNarration.isEmpty())
+                                    ? row.narrationText
+                                    : pendingNarration + " " + row.narrationText;
+                        }
                     }
-
-                    pendingTransactionId = row.refNoText;
-                    pendingDate = parsedDate;
-                    pendingNarration = row.narrationText;
-                    pendingValueDate = row.valueDateText;
-
-                    AmountCalc amountCalc = getAmountCalc(row.withdrawalText, row.depositText);
-                    pendingAmount = amountCalc.amount;
-                    txnType = amountCalc.type;
-                } else if (index == rows.size() - 1) {
-                    // Handles case when last transaction on the page is with date, with other details spanning to next page.
-                    if(pendingDate == null) {
-                        EnhancedTransaction txn = new EnhancedTransaction();
-                        txn.setTransactionId(row.refNoText);
-                        txn.setDate(row.dateText);
-
-                        TransactionUtil.setPayeeDetails(txn,row.narrationText);
-                        // txn.setPayee(pendingNarration);
-                        AmountCalc amountCalc = getAmountCalc(row.withdrawalText, row.depositText);
-                        txn.setAmount(amountCalc.amount.doubleValue());
-                        txn.setTxnType(amountCalc.type);
-                        // TODO: wire pendingValueDate ("01/06/26" style string, parse with DATE_FMT)
-                        // into EnhancedTransaction once that model exposes a value-date field/setter.
-                        results.add(txn);
-                    } else {
-                        // This is case where last row on the page is already having row before with date and possibly there
-                        // is another row with description spanning to the next page.
-                        flush(results);
-                    }
-                }
-                else if (pendingDate != null && !row.narrationText.isEmpty() && !row.narrationText.equalsIgnoreCase(FOOTER_ANCHOR)) {
-                    // Wrapped narration continuation — same transaction, no new date on this line.
-                    pendingNarration = (pendingNarration == null || pendingNarration.isEmpty())
-                            ? row.narrationText
-                            : pendingNarration + " " + row.narrationText;
-                }
-                }
             );
         }
 
@@ -771,7 +800,7 @@ public class HdfcBankStatementParser implements BankStatementParser {
                 txn.setDate(pendingDate.toString());
 
                 TransactionUtil.setPayeeDetails(txn,pendingNarration);
-               // txn.setPayee(pendingNarration);
+                // txn.setPayee(pendingNarration);
                 txn.setAmount(pendingAmount.doubleValue());
                 txn.setTxnType(txnType);
                 // TODO: wire pendingValueDate ("01/06/26" style string, parse with DATE_FMT)
