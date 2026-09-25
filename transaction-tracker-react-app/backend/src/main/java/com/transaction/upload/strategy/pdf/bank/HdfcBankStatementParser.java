@@ -289,9 +289,9 @@ public class HdfcBankStatementParser implements BankStatementParser {
 
     /**
      * Scans the header row at {@code headerY} on the given page, matches each expected column
-     * label to the token(s) that spell it out, and derives column boundaries as the midpoints
-     * between adjacent matched labels. This replaces hand-measured X coordinates with values
-     * read straight off the actual PDF, so the parser adapts automatically to statements whose
+     * label to the token(s) that spell it out, and derives shared column boundaries from
+     * the reference/value-date starts and the remaining adjacent-header midpoints. Coordinates
+     * come from the actual PDF, so the parser adapts to statements whose
      * margins or column widths differ slightly (different HDFC branches/export tools, etc.).
      */
     private ColumnBoundaries detectColumnBoundaries(PDDocument document, int pageIndex, float headerY) throws IOException {
@@ -347,11 +347,20 @@ public class HdfcBankStatementParser implements BankStatementParser {
             return DEFAULT_COLUMN_BOUNDARIES;
         }
 
+        // HDFC's reference data is wider than its header. Use the reference and value-date
+        // header starts as shared dividers; midpoint edges would cut narration/reference data.
+        // Keep the existing monetary-column dividers for this layout.
+        float[] starts = new float[order.size()];
+        for (int i = 1; i < order.size(); i++) {
+            Column column = order.get(i);
+            starts[i] = (column == Column.REF_NO || column == Column.VALUE_DATE)
+                    ? spans.get(i)[0]
+                    : (spans.get(i - 1)[1] + spans.get(i)[0]) / 2f;
+        }
         List<float[]> ranges = new ArrayList<>();
         for (int i = 0; i < order.size(); i++) {
-            float start = (i == 0) ? 0f : (spans.get(i - 1)[1] + spans.get(i)[0]) / 2f;
-            float end = (i == order.size() - 1) ? Float.MAX_VALUE : (spans.get(i)[1] + spans.get(i + 1)[0]) / 2f;
-            ranges.add(new float[]{start, end});
+            float end = i + 1 < starts.length ? starts[i + 1] : Float.MAX_VALUE;
+            ranges.add(new float[]{starts[i], end});
         }
         return ColumnBoundaries.fromOrderedRanges(order, ranges);
     }
@@ -441,12 +450,7 @@ public class HdfcBankStatementParser implements BankStatementParser {
 
     // ---------- horizontal row model ----------
 
-    /**
-     * A contiguous run of characters on a row with no significant horizontal gap between
-     * them — i.e. one "word" or one number, kept together as an atomic unit. Classifying
-     * whole tokens (rather than individual characters) into a column is what stops a single
-     * amount from getting sliced in half across a column boundary.
-     */
+    /** A run of glyphs grouped by gaps and cell boundaries, retaining their text and X span. */
     private static class Token {
         private final StringBuilder text = new StringBuilder();
         private float minX = Float.MAX_VALUE;
@@ -474,10 +478,6 @@ public class HdfcBankStatementParser implements BankStatementParser {
 
         float maxX() {
             return maxX;
-        }
-
-        float centerX() {
-            return (minX + maxX) / 2f;
         }
 
         String text() {
@@ -511,37 +511,37 @@ public class HdfcBankStatementParser implements BankStatementParser {
         }
 
         /**
-         * Same as {@link #groupByGap}, but additionally forces a token break wherever two
-         * adjacent characters straddle one of the given column boundaries — even with zero
-         * visual gap between them. Without this, a narration that starts flush against the end
-         * of the date column (no rendered whitespace in between) would get glued onto the date
-         * into a single token, which then gets classified — date digits and all — into whatever
-         * column its combined center falls in.
+         * Groups text within cells. A transition across a cell divider always starts a new
+         * token, regardless of the ordinary word gap or the preceding glyph's visual width.
          */
         static List<Token> groupByGapAndBoundaries(List<TextPosition> sortedChars, float[] boundaries) {
             List<Token> tokens = new ArrayList<>();
             Token current = null;
+            Float prevStartX = null;
             Float prevEndX = null;
 
             for (TextPosition tp : sortedChars) {
                 float x = tp.getXDirAdj();
                 float gapThreshold = Math.max(tp.getWidthDirAdj(), 2f) * 1.5f;
                 boolean gapBreak = current == null || prevEndX == null || (x - prevEndX) > gapThreshold;
-                boolean boundaryBreak = prevEndX != null && crossesBoundary(prevEndX, x, boundaries);
+                boolean boundaryBreak = prevStartX != null && crossesBoundary(prevStartX, x, boundaries);
 
                 if (gapBreak || boundaryBreak) {
                     current = new Token();
                     tokens.add(current);
                 }
                 current.add(tp);
+                prevStartX = x;
                 prevEndX = x + tp.getWidthDirAdj();
             }
             return tokens;
         }
 
-        private static boolean crossesBoundary(float prevEndX, float x, float[] boundaries) {
+        private static boolean crossesBoundary(float prevStartX, float x, float[] boundaries) {
             for (float b : boundaries) {
-                if (prevEndX < b && x >= b) {
+                // Compare starts, not the preceding glyph's end: glyph widths can touch or
+                // overlap a divider. The next cell must still start a token, even with no gap.
+                if (prevStartX < b && x >= b) {
                     return true;
                 }
             }
@@ -590,18 +590,20 @@ public class HdfcBankStatementParser implements BankStatementParser {
             }
             dateText = dateBuf.toString().trim();
 
-            List<Token> tokens = TokenUtil.groupByGapAndBoundaries(remainingChars, boundaries.edges());
+            // The leading transaction date is already extracted. Its old midpoint edge lies
+            // inside narration, so only enforce the remaining cell dividers on this stream.
+            float[] rowEdges = Arrays.copyOfRange(boundaries.edges(), 1, boundaries.edges().length);
+            List<Token> tokens = TokenUtil.groupByGapAndBoundaries(remainingChars, rowEdges);
 
             Map<Column, StringBuilder> byColumn = new EnumMap<>(Column.class);
             for (Column c : Column.values()) {
                 byColumn.put(c, new StringBuilder());
             }
 
-            // Each token is assigned to exactly ONE column, based on the token's horizontal
-            // center. A blank column simply gets no tokens — it can no longer "steal"
-            // characters from a neighbor, because tokens are never split mid-word/mid-number.
+            // Tokens contain glyph starts from one cell. A final glyph may extend across a
+            // divider, so use the token start rather than letting its visual center move cells.
             for (Token t : tokens) {
-                Column col = boundaries.classify(t.centerX());
+                Column col = boundaries.classify(t.minX());
                 if (col == Column.DATE) {
                     // The real date was already carved out above by regex; anything from the
                     // remaining characters that would still land in DATE is bleed-through

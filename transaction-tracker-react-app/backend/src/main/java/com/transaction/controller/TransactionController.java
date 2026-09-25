@@ -122,7 +122,6 @@ public class TransactionController {
                                                    @RequestBody SaveTransactionsRequest request) {
 
         List<AggregatedTransactions> aggregatedTransactions = request.aggregatedData();
-        logger.info("aggregatedTransactions " + aggregatedTransactions);
 
         // 1. Save Payee to category, sub-category information.
         List<PayeeCategoryResponse> payeeCategoryResponses = new ArrayList<>();

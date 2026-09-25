@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Typography,
@@ -139,7 +139,7 @@ export default function LandingScreen({ onViewTransactionsClick, onViewTrendsCli
           </Typography>
         </Box>
 
-        {/* Icon buttons — Settings + Logout */}
+        {/* Icon buttons â€” Settings + Logout */}
         <Box sx={{ display: "flex", gap: 1 }}>
           <Tooltip title="Category Settings">
             <IconButton
@@ -191,7 +191,7 @@ export default function LandingScreen({ onViewTransactionsClick, onViewTrendsCli
           <Paper
             elevation={0}
             sx={{
-              p: 3,
+              p: 2.5,
               border: "1px solid #d5dbdb",
               borderRadius: 2,
               "&:hover": { borderColor: "primary.main" }
@@ -228,7 +228,7 @@ export default function LandingScreen({ onViewTransactionsClick, onViewTrendsCli
           <Paper
             elevation={0}
             sx={{
-              p: 3,
+              p: 2.5,
               border: "1px solid #d5dbdb",
               borderRadius: 2,
               "&:hover": { borderColor: "secondary.main" }
@@ -256,7 +256,7 @@ export default function LandingScreen({ onViewTransactionsClick, onViewTrendsCli
           <Paper
             elevation={0}
             sx={{
-              p: 3,
+              p: 2.5,
               border: "1px solid #d5dbdb",
               borderRadius: 2,
               "&:hover": { borderColor: "success.main" }
@@ -283,50 +283,19 @@ export default function LandingScreen({ onViewTransactionsClick, onViewTrendsCli
 
       <Box sx={{ mt: 4 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2, flexWrap: "wrap", gap: 2 }}>
-          <Box><Typography variant="h6" sx={{ fontWeight: 700 }}>Where’s My Money At?</Typography><Typography variant="body2" color="text.secondary">{monthLabel}</Typography></Box>
+          <Box><Typography variant="h6" sx={{ fontWeight: 700 }}>Whereâ€™s My Money At?</Typography><Typography variant="body2" color="text.secondary">{monthLabel}</Typography></Box>
           <FormControl size="small" sx={{ minWidth: 170 }}><InputLabel>Period</InputLabel><Select value={selectedMonth} label="Period" onChange={e => setSelectedMonth(e.target.value)}>{Array.from({ length: 12 }, (_, index) => { const date = new Date(now.getFullYear(), index, 1); const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`; return <MenuItem key={value} value={value}>{date.toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</MenuItem>; })}</Select></FormControl>
         </Box>
-        {summaryLoading && <Paper sx={{ p: 3, textAlign: "center" }}><Typography color="text.secondary">Loading summary…</Typography></Paper>}
+        {summaryLoading && <Paper sx={{ p: 3, textAlign: "center" }}><Typography color="text.secondary">Loading summaryâ€¦</Typography></Paper>}
         {!summaryLoading && summaryError && <Paper sx={{ p: 2, border: "1px solid #ef5350" }}><Typography color="error">{summaryError}</Typography></Paper>}
         {!summaryLoading && !summaryError && <>
-          <Grid container spacing={2} sx={{ mb: 3 }}>{[["Income / credits", current?.income, "success.main"], ["Expenses", current?.expenses, "error.main"], ["Investments", current?.investments, "primary.main"], ["Net balance", current?.netBalance, Number(current?.netBalance || 0) < 0 ? "error.main" : "success.main"]].map(([label, value, color]) => <Grid item xs={12} sm={6} md={3} key={label}><Paper elevation={0} sx={{ p: 2, border: "1px solid #d5dbdb", borderRadius: 1 }}><Typography variant="caption" fontWeight={600}>{label}</Typography><Typography variant="h6" sx={{ color, fontWeight: 700 }}>{formatCurrency(value)}</Typography></Paper></Grid>)}</Grid>
+          <Grid container spacing={2} sx={{ mb: 3 }}>{[["Income / credits", current?.income, "success.main"], ["Expenses", current?.expenses, "error.main"], ["Investments", current?.investments, "primary.main"], ["Money left", current?.netBalance, Number(current?.netBalance || 0) < 0 ? "error.main" : "success.main"]].map(([label, value, color]) => <Grid item xs={12} sm={6} md={3} key={label}><Paper elevation={0} sx={{ p: label === "Money left" ? 2.5 : 2, border: label === "Money left" ? "2px solid" : "1px solid #d5dbdb", borderColor: label === "Money left" ? color : "#d5dbdb", borderRadius: 1, backgroundColor: label === "Money left" ? "#fbfffc" : "#fff" }}><Typography variant="caption" fontWeight={600}>{label}</Typography><Typography variant={label === "Money left" ? "h5" : "h6"} sx={{ color, fontWeight: 700 }}>{formatCurrency(value)}</Typography></Paper></Grid>)}</Grid>
           {monthCategories.filter(row => row.categoryId == null).reduce((sum, row) => sum + Number(row.transactionCount || 0), 0) > 0 && <Paper elevation={0} sx={{ p: 2, mb: 3, border: "1px solid #f0c36d", backgroundColor: "#fffaf0" }}><Typography variant="body2">{monthCategories.filter(row => row.categoryId == null).reduce((sum, row) => sum + Number(row.transactionCount || 0), 0)} transactions need categorization <Button size="small" onClick={onViewTransactionsClick}>Review</Button></Typography></Paper>}
-          <Grid container spacing={3}><Grid item xs={12} md={6}><Paper elevation={0} sx={{ p: 2, height: "100%", border: "1px solid #d5dbdb" }}><Typography variant="subtitle1" fontWeight={700}>Where did it go?</Typography>{topCategories.length === 0 ? <Typography variant="body2" color="text.secondary">No expenses for this period.</Typography> : topCategories.map(row => <Box key={`${row.categoryId}-${row.category}`} sx={{ display: "flex", justifyContent: "space-between", py: .75 }}><Typography variant="body2">{row.category || "Uncategorized"}</Typography><Typography variant="body2" fontWeight={600}>{formatCurrency(row.amount)} ({categoryTotals.total ? ((row.amount / categoryTotals.total) * 100).toFixed(0) : 0}%)</Typography></Box>)}</Paper></Grid>
-          <Grid item xs={12} md={6}><Paper elevation={0} sx={{ p: 2, height: "100%", border: "1px solid #d5dbdb" }}><Typography variant="subtitle1" fontWeight={700}>What changed?</Typography>{changes.length === 0 ? <Typography variant="body2" color="text.secondary">No meaningful month-over-month changes.</Typography> : changes.map(row => <Box key={`${row.categoryId}-${row.category}`} sx={{ display: "flex", justifyContent: "space-between", py: .75 }}><Typography variant="body2">{Number(row.absoluteChange) > 0 ? "↑" : "↓"} {row.category || "Uncategorized"}</Typography><Typography variant="body2" fontWeight={600}>{formatCurrency(Math.abs(Number(row.absoluteChange)))} {row.percentageChange == null ? "" : `(${Number(row.percentageChange) > 0 ? "+" : ""}${Number(row.percentageChange).toFixed(0)}%)`}</Typography></Box>)}</Paper></Grid></Grid>
-          {insights.length > 0 && <Paper elevation={0} sx={{ p: 2, mt: 3, border: "1px solid #d5dbdb" }}><Typography variant="subtitle1" fontWeight={700}>Insights</Typography>{insights.map(insight => <Typography key={insight} variant="body2" sx={{ py: .35 }}>• {insight}</Typography>)}</Paper>}
+          <Grid container spacing={3}><Grid item xs={12} md={6}><Paper elevation={0} sx={{ p: 2, height: "100%", border: "1px solid #d5dbdb" }}><Typography variant="subtitle1" fontWeight={700}>Where did it go?</Typography>{topCategories.length === 0 ? <Typography variant="body2" color="text.secondary">No expenses for this period.</Typography> : topCategories.map(row => <Box key={`${row.categoryId}-${row.category}`} sx={{ display: "flex", justifyContent: "space-between", py: .75, color: row.categoryId == null ? "warning.dark" : "inherit" }}><Typography variant="body2" fontWeight={row.categoryId == null ? 700 : 400}>{row.categoryId == null ? "Needs categorization" : row.category}</Typography><Typography variant="body2" fontWeight={600}>{formatCurrency(row.amount)} ({categoryTotals.total ? ((row.amount / categoryTotals.total) * 100).toFixed(0) : 0}%)</Typography></Box>)}</Paper></Grid>
+          <Grid item xs={12} md={6}><Paper elevation={0} sx={{ p: 2, height: "100%", border: "1px solid #d5dbdb" }}><Typography variant="subtitle1" fontWeight={700}>What changed?</Typography>{changes.length === 0 ? <Typography variant="body2" color="text.secondary">No meaningful month-over-month changes.</Typography> : changes.map(row => { const comparable = row.previousMonthAmount != null && Number(row.previousMonthAmount) !== 0; return <Box key={`${row.categoryId}-${row.category}`} sx={{ display: "flex", justifyContent: "space-between", py: .75 }}><Typography variant="body2">{comparable ? (Number(row.absoluteChange) > 0 ? "↑" : "↓") : ""} {comparable ? (row.category || "Uncategorized") : `New this month: ${row.category || "Uncategorized"}`}</Typography><Typography variant="body2" fontWeight={600}>{formatCurrency(Math.abs(Number(row.absoluteChange)))} {comparable && row.percentageChange != null ? `(${Number(row.percentageChange) > 0 ? "+" : ""}${Number(row.percentageChange).toFixed(0)}%)` : ""}</Typography></Box>; })}</Paper></Grid></Grid>
+          {insights.length > 0 && <Paper elevation={0} sx={{ p: 2, mt: 3, border: "1px solid #d5dbdb" }}><Typography variant="subtitle1" fontWeight={700}>Insights</Typography>{insights.map(insight => <Typography key={insight} variant="body2" sx={{ py: .35 }}>â€¢ {insight}</Typography>)}</Paper>}
         </>}
       </Box>
-      {/* Summary Section */}
-      { /* legacy summary removed
-          [
-            { label: "Income", value: "₹0", color: "success.main" },
-            { label: "Expenses", value: "₹0", color: "error.main" },
-            { label: "Investments", value: "₹0", color: "success.main" },
-            { label: "Net Balance", value: "₹0", color: "success.main" },
-            { label: "Uncategorized", value: "0", color: "warning.main" }
-          ].map((item, idx) => (
-            <Grid item xs={12} sm={6} md={2} key={idx}>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 2,
-                  textAlign: "center",
-                  border: "1px solid #d5dbdb",
-                  borderRadius: 1,
-                  backgroundColor: "#fff"
-                }}
-              >
-                <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                  {item.label}
-                </Typography>
-                <Typography variant="body1" sx={{ color: item.color, fontWeight: 700 }}>
-                  {item.value}
-                </Typography>
-              </Paper>
-            </Grid>
-          ))}
-        </Grid>
-      </Box> */}
     </Box>
 
     <CategorySettingsDialog
