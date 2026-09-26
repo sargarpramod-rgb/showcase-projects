@@ -18,11 +18,11 @@ export default function CategorySelector({
     const selectedCategory = event.target.value;
     setData(prevData => {
       const updatedData = { ...prevData };
-      Object.keys(updatedData).forEach(key => {
-        const matchingTransactions = smallTransactions.some(
-          txn => txn.payee === key && payee === "Small Transactions"
-        );
-        updatedData[key] = updatedData[key].map(item => {
+      if (Array.isArray(updatedData.transactions)) {
+        updatedData.transactions = updatedData.transactions.map(item => {
+          const matchingTransactions = smallTransactions.some(
+            txn => txn.payee === item.payee && payee === "Small Transactions"
+          );
           if (item.payee === payee || matchingTransactions) {
             return {
               ...item,
@@ -35,7 +35,7 @@ export default function CategorySelector({
           }
           return item;
         });
-      });
+      }
       return updatedData;
     });
   };
@@ -44,16 +44,16 @@ export default function CategorySelector({
     const selectedSubcategory = event.target.value;
     setData(prevData => {
       const updatedData = { ...prevData };
-      Object.keys(updatedData).forEach(key => {
-        const matchingTransactions = smallTransactions.some(
-          txn => txn.payee === key
-        );
-        updatedData[key] = updatedData[key].map(item =>
-          item.payee === payee || matchingTransactions
+      if (Array.isArray(updatedData.transactions)) {
+        updatedData.transactions = updatedData.transactions.map(item => {
+          const matchingTransactions = smallTransactions.some(
+            txn => txn.payee === item.payee
+          );
+          return item.payee === payee || matchingTransactions
             ? { ...item, subcategory: selectedSubcategory }
-            : item
-        );
-      });
+            : item;
+        });
+      }
       return updatedData;
     });
   };

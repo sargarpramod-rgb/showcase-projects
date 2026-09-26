@@ -128,7 +128,12 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/t
 ### Changes required (Phase-2)
 
      --> Two tables, one for Debit and one for Credit
-     --> Filter and sort on the table.
+     --> Change UI to show upload, summary and charts at the top.
+     --> When user clicks on the upload, show loading
+     --> When user clicks on the save, show loading and return the status.
+     --> Once the User clicks on the show charts, show 
+         give option to check expenses/income by Month.
+     --> And further drill down on the expenses by different categories/subcategories.
      --> When user clicks on the show pie chart and if ay transactions haven't been assigned 
          category, show alert.
      --> Dropdowns should have empty value to remove it from all categories.
@@ -143,6 +148,12 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/t
 
 ### Good to Have
     --> Ability to exclude certain transactions from report. (ADhoc Investementss, Self Transfer etc).
+    --> Ability to split the transactions into multiple:
+        e.g. transferring money to secondary account where some part
+              is used for investmnts, some for EMI . create new transaction with tranId by appending
+              letters like A , B to existing tranid.
+    --> In the pop-up assign category, subcateogyr .
+            e.g. Money transferred to wife for pocket money, other uses etc.
 
 ### Observations (selecting category)
     --> Single Payee can be given money for different purpose
@@ -156,11 +167,21 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/t
         c) Expenses on toy - 
         d) Baby products specifically from Firstcry.
         e) expenses on village travel
-        f) category for credits
-            a) salary
-            b) dividends from stocks
-            c) other incomes
-            d) FD Sweeps
+        f) Reverse transactions
+            e.g. hotel booking which was paid earlier and then
+                 got reverrsed.
+
+            e.g. hotel eating expenses paid earlier are
+                 paid back by friends. how do we categorize it?
+
+EC2 Deployment:
+
+a) For Now, delete the project manaully and run the start up script manually.
+
+JAR_FILE=$(ls target/*.jar | head -n 1)
+
+# Run the Spring Boot app in background
+nohup java -jar $JAR_FILE > app.log 2>&1 &
         
 
 {

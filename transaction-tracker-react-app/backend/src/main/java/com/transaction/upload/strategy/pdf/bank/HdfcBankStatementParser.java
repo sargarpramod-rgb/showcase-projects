@@ -1,9 +1,9 @@
 package com.transaction.upload.strategy.pdf.bank;
 
 
-import com.github.fracpete.quicken4j.Transactions;
 import com.transaction.model.EnhancedTransaction;
 import com.transaction.upload.strategy.pdf.BankStatementParser;
+import com.transaction.util.TransactionUtil;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -16,14 +16,11 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.EnumMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
+
 
 @Component
 public class HdfcBankStatementParser implements BankStatementParser {
@@ -51,76 +48,102 @@ public class HdfcBankStatementParser implements BankStatementParser {
     }
 
     @Override
-    public Transactions parse(PDDocument document) throws IOException {
-        List<EnhancedTransaction> results = new ArrayList<>();
+    public List<EnhancedTransaction> parse(PDDocument document) throws IOException {
+        long pdfStart = System.nanoTime();
 
         List<PDPage> pages = new ArrayList<>();
         document.getPages().forEach(pages::add);
 
-        // Accumulator lives OUTSIDE the page loop: a transaction's wrapped narration
-        // can legitimately continue onto the top of the next page, so state must
-        // survive page boundaries and only be flushed when the *next date* appears
-        // (or at the very end of the document).
-        TransactionAccumulator accumulator = new TransactionAccumulator();
+        // This must remain on the same thread as all other access to this PDDocument.
+        ColumnBoundaries boundaries = getColumnBoundariesForFirstPageWithHeaderRows(document);
 
-        // Column boundaries are detected fresh from each page's own header row where one
-        // exists (page 1, and any later page that happens to repeat the header). Pages
-        // without a header (typical continuation pages) reuse whatever layout was most
-        // recently detected, since HDFC keeps column positions constant across a statement.
-        ColumnBoundaries lastKnownBoundaries = null;
+        List<EnhancedTransaction> transactionList = new ArrayList<>();
+        List<Integer> errorPageIndexes = new ArrayList<>();
 
+        // PDDocument is not thread-safe. Process pages sequentially; parallelism, if needed,
+        // should be introduced only after data has been copied out of PDFBox-owned objects.
         for (int pageIndex = 0; pageIndex < pages.size(); pageIndex++) {
             PDPage page = pages.get(pageIndex);
-
-            float statementLineY = findTextY(document, pageIndex, STATEMENT_LINE_ANCHOR);
-            if (statementLineY < 0) {
-                log.debug("Page {} has no '{}' anchor — skipping", pageIndex + 1, STATEMENT_LINE_ANCHOR);
-                continue;
-            }
-
-            // Column header row only exists on page 1; later pages: table starts right after statement line
-            float columnHeaderY = findTextY(document, pageIndex, COLUMN_HEADER_ANCHOR);
-            float tableStartY = Math.max(columnHeaderY, statementLineY);
-
-            float footerY = findTextY(document, pageIndex, FOOTER_ANCHOR);
-            float tableEndY = footerY > 0 ? footerY : page.getMediaBox().getHeight();
-
-            if (tableEndY <= tableStartY) {
-                log.warn("Page {} table end ({}) <= table start ({}); skipping page", pageIndex + 1, tableEndY, tableStartY);
-                continue;
-            }
-
-            ColumnBoundaries boundaries;
-            if (columnHeaderY > 0) {
-                boundaries = detectColumnBoundaries(document, pageIndex, columnHeaderY);
-                lastKnownBoundaries = boundaries;
-            } else if (lastKnownBoundaries != null) {
-                boundaries = lastKnownBoundaries;
-            } else {
-                log.warn("Page {} has no header row and no previously detected layout — falling back to default column coordinates", pageIndex + 1);
-                boundaries = DEFAULT_COLUMN_BOUNDARIES;
-            }
-
-            RowExtractor extractor = new RowExtractor(tableStartY, tableEndY, boundaries);
-            extractor.setStartPage(pageIndex + 1);
-            extractor.setEndPage(pageIndex + 1);
-            extractor.getText(document);
-
-            List<Row> rows = extractor.buildRows();
-
-            int before = results.size();
-            accumulator.consume(rows, results);
-
-            if (results.size() == before && rows.stream().noneMatch(r -> !r.dateText.isEmpty())) {
-                log.warn("Page {} produced zero transactions — possible template drift or coordinate mismatch", pageIndex + 1);
+            try {
+                parsePage(document, pageIndex, page, boundaries,transactionList);
+            } catch (IOException | RuntimeException ex) {
+                errorPageIndexes.add(pageIndex);
+                log.error("Error parsing page {}. Continuing with remaining pages.", pageIndex + 1, ex);
             }
         }
 
-        // Whatever transaction was still open when the document ended needs to be flushed.
-        accumulator.flush(results);
+        if (!errorPageIndexes.isEmpty()) {
+            log.warn("PDF parsing completed with failures on page(s): {}",
+                    errorPageIndexes.stream().map(i -> i + 1).toList());
+        }
 
-        //return new Transactions(results);
-        return null;
+        log.info("Total time taken for parsing entire PDF is {} ms",
+                (System.nanoTime() - pdfStart) / 1_000_000);
+
+        return transactionList;
+    }
+
+    private List<EnhancedTransaction> parsePage(PDDocument document, int pageIndex, PDPage page, ColumnBoundaries boundaries,
+                                                List<EnhancedTransaction> transactionList) throws IOException {
+        long pageStart = System.nanoTime();
+
+        // Find both anchors in one PDFTextStripper pass instead of scanning the page twice.
+        long anchorStart = System.nanoTime();
+        PageAnchors anchors = findPageAnchors(document, pageIndex);
+        log.debug("Page {} stage findAnchors took {} ms", pageIndex + 1,
+                (System.nanoTime() - anchorStart) / 1_000_000);
+
+        float statementLineY = anchors.statementLineY();
+        if (statementLineY < 0) {
+            log.debug("Page {} has no '{}' anchor — skipping", pageIndex + 1, STATEMENT_LINE_ANCHOR);
+            return Collections.emptyList();
+        }
+
+        float tableStartY = statementLineY;
+        float footerY = anchors.footerY();
+        float tableEndY = footerY > 0 ? footerY : page.getMediaBox().getHeight();
+
+        if (tableEndY <= tableStartY) {
+            log.warn("Page {} table end ({}) <= table start ({}); skipping page", pageIndex + 1, tableEndY, tableStartY);
+            return new ArrayList<>();
+        }
+
+        long extractStart = System.nanoTime();
+        RowExtractor extractor = new RowExtractor(tableStartY, tableEndY, boundaries);
+        extractor.setStartPage(pageIndex + 1);
+        extractor.setEndPage(pageIndex + 1);
+        extractor.getText(document);
+        log.debug("Page {} stage pdfTextExtraction took {} ms", pageIndex + 1,
+                (System.nanoTime() - extractStart) / 1_000_000);
+
+        long rowsStart = System.nanoTime();
+        List<Row> rows = extractor.buildRows();
+        log.debug("Page {} stage buildRows took {} ms", pageIndex + 1,
+                (System.nanoTime() - rowsStart) / 1_000_000);
+
+        long assemblyStart = System.nanoTime();
+        //List<EnhancedTransaction> results = new ArrayList<>();
+        TransactionAccumulator accumulator = new TransactionAccumulator();
+        accumulator.consume(rows, transactionList);
+        log.debug("Page {} stage transactionAssembly took {} ms", pageIndex + 1,
+                (System.nanoTime() - assemblyStart) / 1_000_000);
+        log.debug("Page {} stage TOTAL_PAGE took {} ms", pageIndex + 1,
+                (System.nanoTime() - pageStart) / 1_000_000);
+
+        return transactionList;
+    }
+
+    private ColumnBoundaries getColumnBoundariesForFirstPageWithHeaderRows(PDDocument document) throws IOException {
+        ColumnBoundaries boundaries;
+        float columnHeaderY = findTextY(document, 0, COLUMN_HEADER_ANCHOR);
+
+        if (columnHeaderY > 0) {
+            boundaries = detectColumnBoundaries(document, 0, columnHeaderY);
+        }  else {
+            log.warn("There is no header row and no previously detected layout — falling back to default column coordinates");
+            boundaries = DEFAULT_COLUMN_BOUNDARIES;
+        }
+        return boundaries;
     }
 
     @Override
@@ -129,6 +152,56 @@ public class HdfcBankStatementParser implements BankStatementParser {
     }
 
     // ---------- table boundary detection ----------
+
+    private PageAnchors findPageAnchors(PDDocument document, int pageIndex) throws IOException {
+        PageAnchorFinder finder = new PageAnchorFinder();
+        finder.setStartPage(pageIndex + 1);
+        finder.setEndPage(pageIndex + 1);
+        finder.getText(document);
+        return new PageAnchors(
+                finder.resolveY(STATEMENT_LINE_ANCHOR),
+                finder.resolveY(FOOTER_ANCHOR)
+        );
+    }
+
+    private record PageAnchors(float statementLineY, float footerY) {}
+
+    /**
+     * Captures page text and the Y coordinate associated with each captured character once,
+     * allowing multiple anchors to be resolved without rerunning PDFTextStripper.
+     */
+    private static class PageAnchorFinder extends PDFTextStripper {
+        private final StringBuilder buffer = new StringBuilder();
+        private final List<Float> yPerCharIndex = new ArrayList<>();
+
+        PageAnchorFinder() throws IOException {
+            setSortByPosition(true);
+        }
+
+        @Override
+        protected void writeString(String text, List<TextPosition> positions) throws IOException {
+            if (!positions.isEmpty()) {
+                float y = positions.get(0).getYDirAdj();
+                for (int i = 0; i < text.length(); i++) {
+                    yPerCharIndex.add(y);
+                }
+                buffer.append(text);
+            }
+            buffer.append(' ');
+            yPerCharIndex.add(yPerCharIndex.isEmpty() ? 0f : yPerCharIndex.get(yPerCharIndex.size() - 1));
+            super.writeString(text, positions);
+        }
+
+        float resolveY(String targetText) {
+            String normalized = buffer.toString().replaceAll("\\s+", " ").toLowerCase();
+            String target = targetText.replaceAll("\\s+", " ").toLowerCase();
+            int idx = normalized.indexOf(target);
+            if (idx < 0 || idx >= yPerCharIndex.size()) {
+                return -1;
+            }
+            return yPerCharIndex.get(idx) + 2;
+        }
+    }
 
     private float findTextY(PDDocument document, int pageIndex, String targetText) throws IOException {
         HeaderPositionFinder finder = new HeaderPositionFinder(targetText);
@@ -216,9 +289,9 @@ public class HdfcBankStatementParser implements BankStatementParser {
 
     /**
      * Scans the header row at {@code headerY} on the given page, matches each expected column
-     * label to the token(s) that spell it out, and derives column boundaries as the midpoints
-     * between adjacent matched labels. This replaces hand-measured X coordinates with values
-     * read straight off the actual PDF, so the parser adapts automatically to statements whose
+     * label to the token(s) that spell it out, and derives shared column boundaries from
+     * the reference/value-date starts and the remaining adjacent-header midpoints. Coordinates
+     * come from the actual PDF, so the parser adapts to statements whose
      * margins or column widths differ slightly (different HDFC branches/export tools, etc.).
      */
     private ColumnBoundaries detectColumnBoundaries(PDDocument document, int pageIndex, float headerY) throws IOException {
@@ -274,11 +347,20 @@ public class HdfcBankStatementParser implements BankStatementParser {
             return DEFAULT_COLUMN_BOUNDARIES;
         }
 
+        // HDFC's reference data is wider than its header. Use the reference and value-date
+        // header starts as shared dividers; midpoint edges would cut narration/reference data.
+        // Keep the existing monetary-column dividers for this layout.
+        float[] starts = new float[order.size()];
+        for (int i = 1; i < order.size(); i++) {
+            Column column = order.get(i);
+            starts[i] = (column == Column.REF_NO || column == Column.VALUE_DATE)
+                    ? spans.get(i)[0]
+                    : (spans.get(i - 1)[1] + spans.get(i)[0]) / 2f;
+        }
         List<float[]> ranges = new ArrayList<>();
         for (int i = 0; i < order.size(); i++) {
-            float start = (i == 0) ? 0f : (spans.get(i - 1)[1] + spans.get(i)[0]) / 2f;
-            float end = (i == order.size() - 1) ? Float.MAX_VALUE : (spans.get(i)[1] + spans.get(i + 1)[0]) / 2f;
-            ranges.add(new float[]{start, end});
+            float end = i + 1 < starts.length ? starts[i + 1] : Float.MAX_VALUE;
+            ranges.add(new float[]{starts[i], end});
         }
         return ColumnBoundaries.fromOrderedRanges(order, ranges);
     }
@@ -368,21 +450,24 @@ public class HdfcBankStatementParser implements BankStatementParser {
 
     // ---------- horizontal row model ----------
 
-    /**
-     * A contiguous run of characters on a row with no significant horizontal gap between
-     * them — i.e. one "word" or one number, kept together as an atomic unit. Classifying
-     * whole tokens (rather than individual characters) into a column is what stops a single
-     * amount from getting sliced in half across a column boundary.
-     */
+    /** A run of glyphs grouped by gaps and cell boundaries, retaining their text and X span. */
     private static class Token {
         private final StringBuilder text = new StringBuilder();
         private float minX = Float.MAX_VALUE;
         private float maxX = -Float.MAX_VALUE;
 
         void add(TextPosition tp) {
-            text.append(tp.getUnicode());
             float x = tp.getXDirAdj();
             float endX = x + tp.getWidthDirAdj();
+
+            // If there's any visible gap from the last character, insert a space
+            // Use a lower threshold (0.1 = 10% of character width) to catch visual gaps
+            // that don't have actual space characters in the PDF
+            if (maxX > -Float.MAX_VALUE && (x - maxX) > Math.max(tp.getWidthDirAdj(), 2f) * 0.1f) {
+                text.append(' ');
+            }
+
+            text.append(tp.getUnicode());
             minX = Math.min(minX, x);
             maxX = Math.max(maxX, endX);
         }
@@ -393,10 +478,6 @@ public class HdfcBankStatementParser implements BankStatementParser {
 
         float maxX() {
             return maxX;
-        }
-
-        float centerX() {
-            return (minX + maxX) / 2f;
         }
 
         String text() {
@@ -430,37 +511,37 @@ public class HdfcBankStatementParser implements BankStatementParser {
         }
 
         /**
-         * Same as {@link #groupByGap}, but additionally forces a token break wherever two
-         * adjacent characters straddle one of the given column boundaries — even with zero
-         * visual gap between them. Without this, a narration that starts flush against the end
-         * of the date column (no rendered whitespace in between) would get glued onto the date
-         * into a single token, which then gets classified — date digits and all — into whatever
-         * column its combined center falls in.
+         * Groups text within cells. A transition across a cell divider always starts a new
+         * token, regardless of the ordinary word gap or the preceding glyph's visual width.
          */
         static List<Token> groupByGapAndBoundaries(List<TextPosition> sortedChars, float[] boundaries) {
             List<Token> tokens = new ArrayList<>();
             Token current = null;
+            Float prevStartX = null;
             Float prevEndX = null;
 
             for (TextPosition tp : sortedChars) {
                 float x = tp.getXDirAdj();
                 float gapThreshold = Math.max(tp.getWidthDirAdj(), 2f) * 1.5f;
                 boolean gapBreak = current == null || prevEndX == null || (x - prevEndX) > gapThreshold;
-                boolean boundaryBreak = prevEndX != null && crossesBoundary(prevEndX, x, boundaries);
+                boolean boundaryBreak = prevStartX != null && crossesBoundary(prevStartX, x, boundaries);
 
                 if (gapBreak || boundaryBreak) {
                     current = new Token();
                     tokens.add(current);
                 }
                 current.add(tp);
+                prevStartX = x;
                 prevEndX = x + tp.getWidthDirAdj();
             }
             return tokens;
         }
 
-        private static boolean crossesBoundary(float prevEndX, float x, float[] boundaries) {
+        private static boolean crossesBoundary(float prevStartX, float x, float[] boundaries) {
             for (float b : boundaries) {
-                if (prevEndX < b && x >= b) {
+                // Compare starts, not the preceding glyph's end: glyph widths can touch or
+                // overlap a divider. The next cell must still start a token, even with no gap.
+                if (prevStartX < b && x >= b) {
                     return true;
                 }
             }
@@ -509,18 +590,20 @@ public class HdfcBankStatementParser implements BankStatementParser {
             }
             dateText = dateBuf.toString().trim();
 
-            List<Token> tokens = TokenUtil.groupByGapAndBoundaries(remainingChars, boundaries.edges());
+            // The leading transaction date is already extracted. Its old midpoint edge lies
+            // inside narration, so only enforce the remaining cell dividers on this stream.
+            float[] rowEdges = Arrays.copyOfRange(boundaries.edges(), 1, boundaries.edges().length);
+            List<Token> tokens = TokenUtil.groupByGapAndBoundaries(remainingChars, rowEdges);
 
             Map<Column, StringBuilder> byColumn = new EnumMap<>(Column.class);
             for (Column c : Column.values()) {
                 byColumn.put(c, new StringBuilder());
             }
 
-            // Each token is assigned to exactly ONE column, based on the token's horizontal
-            // center. A blank column simply gets no tokens — it can no longer "steal"
-            // characters from a neighbor, because tokens are never split mid-word/mid-number.
+            // Tokens contain glyph starts from one cell. A final glyph may extend across a
+            // divider, so use the token start rather than letting its visual center move cells.
             for (Token t : tokens) {
-                Column col = boundaries.classify(t.centerX());
+                Column col = boundaries.classify(t.minX());
                 if (col == Column.DATE) {
                     // The real date was already carved out above by regex; anything from the
                     // remaining characters that would still land in DATE is bleed-through
@@ -610,6 +693,17 @@ public class HdfcBankStatementParser implements BankStatementParser {
         }
     }
 
+    private static class AmountCalc {
+
+        private BigDecimal amount;
+        private String type;
+
+        public AmountCalc(BigDecimal amount, String type) {
+            this.amount = amount;
+            this.type = type;
+        }
+    }
+
     // ---------- transaction assembly ----------
 
     /**
@@ -628,42 +722,77 @@ public class HdfcBankStatementParser implements BankStatementParser {
         private String txnType;
 
         void consume(List<Row> rows, List<EnhancedTransaction> results) {
-            for (Row row : rows) {
-                Matcher dateMatcher = DATE_PATTERN.matcher(row.dateText);
 
-                if (!row.dateText.isEmpty() && dateMatcher.find()) {
-                    // New transaction detected — close out the previous one first.
-                    flush(results);
+            IntStream.range(0, rows.size()).forEach(index -> {
 
-                    LocalDate parsedDate;
-                    try {
-                        parsedDate = LocalDate.parse(dateMatcher.group(), DATE_FMT);
-                    } catch (Exception e) {
-                        pendingDate = null;
-                        continue;
+                        Row  row = rows.get(index);
+
+                        Matcher dateMatcher = DATE_PATTERN.matcher(row.dateText);
+
+                        if (!row.dateText.isEmpty() && dateMatcher.find()) {
+                            // New transaction detected — close out the previous one first.
+                            flush(results);
+
+                            LocalDate parsedDate = null;
+                            try {
+                                parsedDate = LocalDate.parse(dateMatcher.group(), DATE_FMT);
+                            } catch (Exception e) {
+                                pendingDate = null;
+                            }
+
+                            pendingTransactionId = row.refNoText;
+                            pendingDate = parsedDate;
+                            pendingNarration = row.narrationText;
+                            pendingValueDate = row.valueDateText;
+
+                            AmountCalc amountCalc = getAmountCalc(row.withdrawalText, row.depositText);
+                            pendingAmount = amountCalc.amount;
+                            txnType = amountCalc.type;
+                        } else if (index == rows.size() - 1) {
+                            // Handles case when last transaction on the page is with date, with other details spanning to next page.
+                            if(pendingDate == null) {
+                                EnhancedTransaction txn = new EnhancedTransaction();
+                                txn.setTransactionId(row.refNoText);
+                                txn.setDate(row.dateText);
+
+                                TransactionUtil.setPayeeDetails(txn,row.narrationText);
+                                // txn.setPayee(pendingNarration);
+                                AmountCalc amountCalc = getAmountCalc(row.withdrawalText, row.depositText);
+                                txn.setAmount(amountCalc.amount.doubleValue());
+                                txn.setTxnType(amountCalc.type);
+                                // TODO: wire pendingValueDate ("01/06/26" style string, parse with DATE_FMT)
+                                // into EnhancedTransaction once that model exposes a value-date field/setter.
+                                results.add(txn);
+                            } else {
+                                // This is case where last row on the page is already having row before with date and possibly there
+                                // is another row with description spanning to the next page.
+                                flush(results);
+                            }
+                        }
+                        else if (pendingDate != null && !row.narrationText.isEmpty() && !row.narrationText.equalsIgnoreCase(FOOTER_ANCHOR)) {
+                            // Wrapped narration continuation — same transaction, no new date on this line.
+                            pendingNarration = (pendingNarration == null || pendingNarration.isEmpty())
+                                    ? row.narrationText
+                                    : pendingNarration + " " + row.narrationText;
+                        }
                     }
+            );
+        }
 
-                    pendingDate = parsedDate;
-                    pendingNarration = row.narrationText;
-                    pendingValueDate = row.valueDateText;
+        AmountCalc getAmountCalc(String withdrawalText, String depositText) {
 
-                    if (!row.withdrawalText.isEmpty()) {
-                        pendingAmount = safeParseAmount(row.withdrawalText).negate();
-                        txnType = "DEBIT";
-                    } else if (!row.depositText.isEmpty()) {
-                        pendingAmount = safeParseAmount(row.depositText);
-                        txnType = "CREDIT";
-                    } else {
-                        log.warn("Row dated {} has neither withdrawal nor deposit — defaulting to 0", parsedDate);
-                        pendingAmount = BigDecimal.ZERO;
-                    }
-                } else if (pendingDate != null && !row.narrationText.isEmpty() && !row.narrationText.equalsIgnoreCase(FOOTER_ANCHOR)) {
-                    // Wrapped narration continuation — same transaction, no new date on this line.
-                    pendingNarration = (pendingNarration == null || pendingNarration.isEmpty())
-                            ? row.narrationText
-                            : pendingNarration + " " + row.narrationText;
-                }
+            AmountCalc calc = null;
+
+            if (!withdrawalText.isEmpty()) {
+
+                calc = new AmountCalc(safeParseAmount(withdrawalText).negate(), "DEBIT");
+            } else if (!depositText.isEmpty()) {
+                calc = new AmountCalc(safeParseAmount(depositText), "CREDIT");
+            } else {
+                calc = new AmountCalc(BigDecimal.ZERO, "UNKNOWN");
             }
+
+            return calc;
         }
 
         void flush(List<EnhancedTransaction> results) {
@@ -671,7 +800,9 @@ public class HdfcBankStatementParser implements BankStatementParser {
                 EnhancedTransaction txn = new EnhancedTransaction();
                 txn.setTransactionId(pendingTransactionId);
                 txn.setDate(pendingDate.toString());
-                txn.setPayee(pendingNarration);
+
+                TransactionUtil.setPayeeDetails(txn,pendingNarration);
+                // txn.setPayee(pendingNarration);
                 txn.setAmount(pendingAmount.doubleValue());
                 txn.setTxnType(txnType);
                 // TODO: wire pendingValueDate ("01/06/26" style string, parse with DATE_FMT)

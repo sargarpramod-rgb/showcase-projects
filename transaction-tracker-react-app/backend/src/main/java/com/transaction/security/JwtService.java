@@ -1,270 +1,176 @@
 package com.transaction.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.transaction.model.UserPrincipal;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class JwtService {
-
     private final SecretKey key;
-    private final String googleClientId;
     private final long expirationMillis;
     private final long refreshExpirationMillis;
+    private final Clock clock;
+    static final int MAX_REVOKED_ACCESS_ENTRIES = 10_000;
+    private final ConcurrentHashMap<String, Instant> blacklistedTokens = new ConcurrentHashMap<>();
 
-    // Blacklist: jti → expiry time (cleared lazily to avoid memory leak)
-    private final ConcurrentHashMap<String, Date> blacklistedTokens = new ConcurrentHashMap<>();
+    @Autowired
+    public JwtService(@Value("${app.jwt.secret}") String secret,
+                      @Value("${app.jwt.expirationMillis:900000}") long expirationMillis,
+                      @Value("${app.jwt.refreshExpirationMillis:604800000}") long refreshExpirationMillis) {
+        this(secret, expirationMillis, refreshExpirationMillis, Clock.systemUTC());
+    }
 
-    public JwtService(
-            @Value("${app.jwt.secret}") String secret,
-            @Value("${app.google.clientId:}") String googleClientId,
-            @Value("${app.jwt.expirationMillis:900000}") long expirationMillis,
-            @Value("${app.jwt.refreshExpirationMillis:604800000}") long refreshExpirationMillis) {
-        this.key = Keys.hmacShaKeyFor(secret.getBytes());
-        this.googleClientId = googleClientId;
+    JwtService(String secret, long expirationMillis, long refreshExpirationMillis, Clock clock) {
+        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        if (expirationMillis < 1000 || refreshExpirationMillis < expirationMillis) {
+            throw new IllegalArgumentException("Invalid JWT lifetimes");
+        }
         this.expirationMillis = expirationMillis;
         this.refreshExpirationMillis = refreshExpirationMillis;
+        this.clock = clock;
     }
 
-    // ── Token Generation ──────────────────────────────────────────────────────
-
-    /**
-     * Generate a short-lived access token (default 15 minutes).
-     */
-    public String generateToken(Long userId, String email) {
-        return Jwts.builder()
-                .setSubject(email)
-                .claim("userId", userId)
-                .setId(UUID.randomUUID().toString())  // jti — used for blacklisting
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + expirationMillis))
-                .signWith(key)
-                .compact();
+    public Map<String, String> issueTokens(long userId, String email, String name, String provider, String sid) {
+        return Map.of("accessToken", token(userId, email, name, provider, sid, "access", expirationMillis),
+                "refreshToken", token(userId, email, name, provider, sid, "refresh", refreshExpirationMillis));
     }
 
-    /**
-     * Generate a long-lived refresh token (default 7 days).
-     */
-    public String generateRefreshToken(Long userId, String email) {
-        return Jwts.builder()
-                .setSubject(email)
-                .claim("userId", userId)
-                .claim("type", "refresh")
-                .setId(UUID.randomUUID().toString())
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + refreshExpirationMillis))
-                .signWith(key)
-                .compact();
+    private String token(long userId, String email, String name, String provider,
+                         String sid, String type, long lifetime) {
+        Instant now = clock.instant();
+        return Jwts.builder().setSubject(Long.toString(userId))
+                .claim("email", email).claim("name", name).claim("provider", provider)
+                .claim("type", type).claim("sid", sid).setId(UUID.randomUUID().toString())
+                .setIssuedAt(Date.from(now)).setExpiration(Date.from(now.plusMillis(lifetime)))
+                .signWith(key).compact();
     }
 
-    // ── Token Rotation ────────────────────────────────────────────────────────
+    public Claims parse(String token, String type) {
+        return parse(token, type, false);
+    }
 
-    /**
-     * Validates the refresh token, blacklists it, and issues a fresh access + refresh token pair.
-     * Called automatically by JwtAuthFilter when the access token is expired.
-     */
-    public Map<String, String> rotateTokens(String refreshToken) {
+    private Claims parse(String token, String type, boolean allowExpired) {
         Claims claims;
         try {
-            claims = parseClaims(refreshToken);
-        } catch (ExpiredJwtException e) {
-            throw new IllegalArgumentException("Refresh token has expired. Please log in again.");
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid refresh token.");
+            claims = Jwts.parserBuilder().setSigningKey(key)
+                    .setClock(() -> Date.from(clock.instant())).build().parseClaimsJws(token).getBody();
+        } catch (ExpiredJwtException ex) {
+            if (!allowExpired) throw ex;
+            // JJWT verifies the signature before reporting expiration.
+            claims = ex.getClaims();
         }
-
-        if (!"refresh".equals(claims.get("type"))) {
-            throw new IllegalArgumentException("Not a refresh token.");
+        if (!type.equals(claims.get("type", String.class))
+                || blank(claims.getId()) || blank(claims.get("sid", String.class))
+                || blank(claims.getSubject()) || claims.getExpiration() == null) {
+            throw new JwtException("Missing or invalid token claims");
         }
-
-        if (isBlacklisted(claims.getId())) {
-            // Possible token theft — refresh token already used
-            throw new IllegalArgumentException("Refresh token already used or invalidated.");
+        try {
+            if (Long.parseLong(claims.getSubject()) <= 0) throw new NumberFormatException();
+        } catch (NumberFormatException ex) {
+            throw new JwtException("Invalid subject", ex);
         }
-
-        // Invalidate the old refresh token immediately (one-time use)
-        blacklistedTokens.put(claims.getId(), claims.getExpiration());
-        cleanExpiredBlacklistEntries();
-
-        String email  = claims.getSubject();
-        Long userId   = claims.get("userId", Long.class);
-
-        return Map.of(
-                "accessToken",  generateToken(userId, email),
-                "refreshToken", generateRefreshToken(userId, email)
-        );
+        if (!allowExpired && !claims.getExpiration().toInstant().isAfter(clock.instant())) {
+            throw new JwtException("Token expired");
+        }
+        return claims;
     }
 
-    // ── Validation ────────────────────────────────────────────────────────────
+    private boolean blank(String value) {
+        return value == null || value.isBlank();
+    }
 
-    /**
-     * Returns true if the token is valid — correctly signed, not expired, not blacklisted.
-     * Falls back to Google token check if signature doesn't match our key.
-     */
+    public Optional<Claims> logoutClaims(String token, String type) {
+        if (token == null) return Optional.empty();
+        try {
+            return Optional.of(parse(token, type, true));
+        } catch (JwtException | IllegalArgumentException ex) {
+            return Optional.empty();
+        }
+    }
+
+    public boolean isExpiredAccessToken(String token) {
+        if (token == null) return false;
+        try {
+            Claims claims = parse(token, "access", true);
+            return !claims.getExpiration().toInstant().isAfter(clock.instant())
+                    && !isAccessRevoked(claims.getId());
+        } catch (JwtException | IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
+    // Cryptographic validation only. Authentication also requires AuthSessionService's DB check.
     public boolean isTokenValid(String token) {
         try {
-            Claims claims = parseClaims(token);
-            if (isBlacklisted(claims.getId())) return false;
-            return validateSignedToken(claims);
-        } catch (ExpiredJwtException e) {
-            return false; // expired — let filter handle auto-refresh
-        } catch (Exception e) {
-            return isValidGoogleToken(token); // may be a Google-issued token
+            return !isAccessRevoked(parse(token, "access").getId());
+        } catch (JwtException | IllegalArgumentException ex) {
+            return false;
         }
     }
 
-    /**
-     * Returns true only if the token is expired but the signature is valid.
-     * Used by the filter to decide whether auto-refresh should be attempted.
-     */
-    public boolean isTokenExpiredOnly(String token) {
-        try {
-            parseClaims(token);
-            return false; // parsed fine — not expired
-        } catch (ExpiredJwtException e) {
-            return true;  // expired with valid signature — safe to attempt refresh
-        } catch (Exception e) {
-            return false; // invalid signature or malformed — don't refresh
-        }
-    }
-
-    // ── Authentication ────────────────────────────────────────────────────────
-
-    /**
-     * Builds a Spring Security Authentication object from a valid access token.
-     */
     public Authentication getAuthentication(String token) {
-        Claims claims = parseClaims(token);
+        return getAuthentication(parse(token, "access"));
+    }
 
-        String email  = claims.getSubject();
-        Object userId = claims.get("userId");
-
-        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                email,
-                null,
-                Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"))
-        );
+    public Authentication getAuthentication(Claims claims) {
+        long userId = Long.parseLong(claims.getSubject());
+        var auth = new UsernamePasswordAuthenticationToken(
+                new UserPrincipal(userId, claims.get("email", String.class)), null,
+                List.of(new SimpleGrantedAuthority("ROLE_USER")));
         auth.setDetails(userId);
         return auth;
     }
 
-    // ── Blacklist / Logout ────────────────────────────────────────────────────
-
-    /**
-     * Blacklists a token by its jti so it cannot be used again, even before expiry.
-     * Call this for both access and refresh tokens on logout.
-     */
-    public void invalidateToken(String token) {
-        try {
-            Claims claims = getClaimsIgnoringExpiry(token);
-            String jti    = claims.getId();
-            Date expiry   = claims.getExpiration();
-            if (jti != null) {
-                blacklistedTokens.put(jti, expiry != null ? expiry : new Date());
-                cleanExpiredBlacklistEntries();
-            }
-        } catch (Exception ignored) {
-            // Already expired or malformed — nothing to blacklist
-        }
-    }
-
-    private boolean isBlacklisted(String jti) {
-        return jti != null && blacklistedTokens.containsKey(jti);
-    }
-
-    /**
-     * Remove entries from the blacklist whose tokens have already expired naturally.
-     * Called lazily on every blacklist write to prevent unbounded memory growth.
-     */
-    private void cleanExpiredBlacklistEntries() {
-        Date now = new Date();
-        blacklistedTokens.entrySet().removeIf(e -> e.getValue().before(now));
-    }
-
-    // ── Private Helpers ───────────────────────────────────────────────────────
-
-    /**
-     * Parse and validate claims using the app signing key.
-     * Throws ExpiredJwtException if expired, other JwtException if invalid.
-     */
-    private Claims parseClaims(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(key)
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
-    }
-
-    /**
-     * Extract claims from a token without enforcing expiry.
-     * Used only for blacklisting expired tokens on logout.
-     */
-    private Claims getClaimsIgnoringExpiry(String token) {
-        try {
-            return parseClaims(token);
-        } catch (ExpiredJwtException e) {
-            return e.getClaims(); // library provides claims even on expiry
-        }
-    }
-
-    /**
-     * Additional checks for app-issued tokens after signature verification.
-     * Rejects expired tokens and validates audience for Google-issuer tokens.
-     */
-    private boolean validateSignedToken(Claims claims) {
-        Date exp = claims.getExpiration();
-        if (exp != null && !exp.after(new Date())) return false;
-
-        // Defensive: if somehow a Google issuer appears on an app-signed token
-        String issuer = claims.getIssuer();
-        if ("accounts.google.com".equals(issuer) || "https://accounts.google.com".equals(issuer)) {
-            if (googleClientId != null && !googleClientId.isEmpty()) {
-                return googleClientId.equals(claims.getAudience());
-            }
+    public boolean isAccessRevoked(String jti) {
+        Instant expires = blacklistedTokens.get(jti);
+        if (expires == null) return false;
+        if (!expires.isAfter(clock.instant())) {
+            blacklistedTokens.remove(jti, expires);
+            return false;
         }
         return true;
     }
 
-    /**
-     * Validates a Google-issued ID token by decoding the payload without
-     * signature verification (Google signs with its own keys).
-     * Checks issuer and audience only.
-     */
-    private boolean isValidGoogleToken(String token) {
-        try {
-            String[] parts = token.split("\\.");
-            if (parts.length < 2) return false;
-
-            String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]));
-            @SuppressWarnings("unchecked")
-            Map<String, Object> map = new ObjectMapper().readValue(payloadJson, Map.class);
-
-            String issuer = map.getOrDefault("iss", "").toString();
-            boolean issuerOk = "accounts.google.com".equals(issuer)
-                    || "https://accounts.google.com".equals(issuer);
-
-            if (!issuerOk) return false;
-
-            Object audObj = map.get("aud");
-            if (googleClientId == null || googleClientId.isEmpty() || audObj == null) return false;
-
-            if (audObj instanceof String)     return googleClientId.equals(audObj);
-            if (audObj instanceof Collection) return ((Collection<?>) audObj).contains(googleClientId);
-            return googleClientId.equals(audObj.toString());
-
-        } catch (Exception e) {
-            return false;
+    // Bounded optimization only: eviction cannot allow access because cache misses check the DB.
+    public synchronized void blacklistAccess(Claims claims) {
+        Instant expires = claims.getExpiration().toInstant();
+        if (!expires.isAfter(clock.instant())) return;
+        cleanExpiredBlacklistEntries();
+        if (!blacklistedTokens.containsKey(claims.getId())
+                && blacklistedTokens.size() >= MAX_REVOKED_ACCESS_ENTRIES) {
+            blacklistedTokens.keySet().stream().findFirst().ifPresent(blacklistedTokens::remove);
         }
+        blacklistedTokens.put(claims.getId(), expires);
+    }
+
+    @Scheduled(fixedDelay = 60_000)
+    public void cleanExpiredBlacklistEntries() {
+        Instant now = clock.instant();
+        blacklistedTokens.entrySet().removeIf(entry -> !entry.getValue().isAfter(now));
+    }
+
+    public int getAccessTokenCookieMaxAgeSeconds() {
+        return Math.toIntExact(expirationMillis / 1000);
+    }
+
+    public int getRefreshTokenCookieMaxAgeSeconds() {
+        return Math.toIntExact(refreshExpirationMillis / 1000);
     }
 }

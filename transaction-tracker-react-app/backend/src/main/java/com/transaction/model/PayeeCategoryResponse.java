@@ -10,4 +10,6 @@ public class PayeeCategoryResponse {
     private String payeeName;
     private String categoryName;
     private String subCategoryName;
+    private Long userId;
+
 }

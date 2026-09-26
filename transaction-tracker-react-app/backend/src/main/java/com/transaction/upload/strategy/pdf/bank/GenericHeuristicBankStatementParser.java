@@ -33,7 +33,7 @@ public class GenericHeuristicBankStatementParser implements BankStatementParser 
     }
 
     @Override
-    public Transactions parse(PDDocument document) throws IOException {
+    public List<EnhancedTransaction> parse(PDDocument document) throws IOException {
         return null;
     }
 

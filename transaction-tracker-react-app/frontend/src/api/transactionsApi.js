@@ -1,10 +1,10 @@
-import config from "../config/config";
+import { backendFetch } from "./backendFetch";
 
 // Shared fetch wrapper — cookies sent automatically via credentials: "include"
 const apiFetch = async (url, options = {}) => {
   const isFormData = options.body instanceof FormData;
 
-  const response = await fetch(`${config.API_BASE}${url}`, {
+  const response = await backendFetch(url, {
     ...options,
     credentials: "include",
     headers: {
@@ -26,16 +26,16 @@ const apiFetch = async (url, options = {}) => {
   return response;
 };
 
-export const saveTransactions = async (aggregatedData) => {
-  const response = await apiFetch("/api/save-transactions", {
+export const saveTransactions = async (uploadId, aggregatedData) => {
+  const response = await apiFetch("/api/transactions/save", {
     method: "POST",
-    body: JSON.stringify(aggregatedData, null, 2),
+    body: JSON.stringify({ uploadId, aggregatedData }, null, 2),
   });
   return response.text();
 };
 
-export const fetchPreviousTransactions = async () => {
-  const response = await apiFetch("/api/transactions-summary-by/2025");
+export const fetchPreviousTransactions = async (year) => {
+  const response = await apiFetch(`/api/transactions-summary-by/${year}`);
   return response.json();
 };
 
@@ -48,7 +48,7 @@ export const uploadTransactions = async (uploadedFile) => {
   const formData = new FormData();
   formData.append("file", uploadedFile);
 
-  const response = await apiFetch("/api/upload-transaction-file", {
+  const response = await apiFetch("/api/transactions/upload", {
     method: "POST",
     body: formData,  // apiFetch auto-detects FormData and skips Content-Type
   });
@@ -74,5 +74,52 @@ export const saveSubcategories = async (category, subcategories) => {
     method: "POST",
     body: JSON.stringify(subcategories),
   });
+  return response.json();
+};
+
+export const sendChatQuery = async (query) => {
+  try {
+    const response = await fetch("http://localhost:8000/api/ai/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 503 || response.status === 502) {
+        throw new Error("SERVICE_UNAVAILABLE");
+      }
+      throw new Error(`HTTP_ERROR_${response.status}`);
+    }
+
+    return response.json();
+  } catch (err) {
+    // Handle network errors
+    if (err.message === "Failed to fetch") {
+      throw new Error("SERVICE_UNAVAILABLE");
+    }
+    // Re-throw if it's our custom error
+    if (err.message.startsWith("SERVICE_UNAVAILABLE") || err.message.startsWith("HTTP_ERROR")) {
+      throw err;
+    }
+    // Other errors
+    throw new Error("SERVICE_ERROR");
+  }
+};
+
+export const fetchMonthlyTrends = async (year, options = {}) => {
+  const response = await apiFetch(`/api/transactions-trend/monthly/${year}`, options);
+  return response.json();
+};
+
+export const fetchYearlyTrends = async (options = {}) => {
+  const response = await apiFetch("/api/transactions-trend/yearly", options);
+  return response.json();
+};
+
+export const fetchCategoryTrends = async (year, options = {}) => {
+  const response = await apiFetch(`/api/transactions-trend/categories/${year}`, options);
   return response.json();
 };

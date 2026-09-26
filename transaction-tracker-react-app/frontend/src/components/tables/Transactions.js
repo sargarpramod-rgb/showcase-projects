@@ -80,15 +80,13 @@ const handleBulkApply = () => {
     console.log("Selected:", selected);
     console.log("Keys in updatedData:", Object.keys(updatedData));
 
-    selected.forEach(payeeKey => {
-      if (Array.isArray(updatedData[payeeKey])) {
-        updatedData[payeeKey] = updatedData[payeeKey].map(item =>
-          !item.category
-            ? { ...item, category: bulkCategory, subcategory: bulkSubcategory }
-            : item
-        );
-      }
-    });
+    if (Array.isArray(updatedData.transactions)) {
+      updatedData.transactions = updatedData.transactions.map(item =>
+        selected.includes(item.payee) && !item.category
+          ? { ...item, category: bulkCategory, subcategory: bulkSubcategory }
+          : item
+      );
+    }
 
     return updatedData;
   });

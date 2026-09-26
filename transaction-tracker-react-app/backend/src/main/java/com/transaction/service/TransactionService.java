@@ -1,22 +1,20 @@
 package com.transaction.service;
 
-import com.github.fracpete.quicken4j.Transactions;
+import com.transaction.dao.TransactionDao;
 import com.transaction.model.*;
-import org.apache.catalina.util.StringUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.time.LocalDate;
+import java.time.Clock;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
-import java.util.stream.Collectors;
+import java.math.BigDecimal;
 
 import static java.util.stream.Collectors.toMap;
 
@@ -24,6 +22,7 @@ import static java.util.stream.Collectors.toMap;
 public class TransactionService {
 
     private final JdbcTemplate jdbcTemplate;
+    private final Clock trendClock;
 
     @Autowired
     Map<String,Long> categoryMap;
@@ -32,29 +31,55 @@ public class TransactionService {
     Map<String, Map<String, Long>> subcategoryMap;
 
     @Autowired
+    TransactionDao transactionDao;
+
+    @Autowired
+    PayeeCategoryService payeeCategoryService;
+
+    @Autowired
     public TransactionService(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
+        this(jdbcTemplate, Clock.system(ZoneId.of("Asia/Kolkata")));
     }
 
-    public List<PayeeCategoryResponse> getPayeeCategoryMappings() {
+    TransactionService(JdbcTemplate jdbcTemplate, Clock trendClock) {
+        this.jdbcTemplate = jdbcTemplate;
+        this.trendClock = trendClock;
+    }
 
-        String sql = """
-              SELECT
-              pc.payee_name,
-              c.name AS category_name,
-              sc.name AS subcategory_name
-              FROM payee_category_mapping pc
-              JOIN categories c
-              ON pc.category_id = c.id
-              JOIN subcategories sc
-              ON pc.category_id= sc.category_id
-              AND pc.subcategory_id=sc.id
-                """;
+    public List<EnhancedTransaction> getByUploadId(Long uploadId) {
+        return transactionDao.getByUploadId(uploadId);
+    }
 
-        return jdbcTemplate.query(sql, (rs, rowNum) ->
-                new PayeeCategoryResponse(rs.getString("payee_name"),
-                rs.getString("category_name"),
-                rs.getString("subcategory_name")));
+    public List<EnhancedTransaction> getTransactionsByYear(int year, Long userId) {
+
+        return transactionDao.getByYear(year,userId);
+    }
+
+    public List<MonthlyTrendData> getMonthlyTrends(int year, Long userId) {
+        LocalDate today = LocalDate.now(trendClock);
+        if (year < 1 || year > today.getYear()) {
+            throw new IllegalArgumentException("Year must be between 1 and the current reporting year");
+        }
+        LocalDate start = LocalDate.of(year, 1, 1);
+        LocalDate end = year == today.getYear() ? today.plusDays(1) : start.plusYears(1);
+        int months = year == today.getYear() ? today.getMonthValue() : 12;
+        return transactionDao.getMonthlyTrends(userId, start, end, months, today);
+    }
+
+    public List<YearlyTrendData> getYearlyTrends(Long userId) {
+        LocalDate today = LocalDate.now(trendClock);
+        return transactionDao.getYearlyTrends(userId, LocalDate.of(1, 1, 1), today.plusDays(1), today);
+    }
+
+    public List<CategoryTrendData> getCategoryTrends(int year, Long userId) {
+        LocalDate today = LocalDate.now(trendClock);
+        if (year < 1 || year > today.getYear()) {
+            throw new IllegalArgumentException("Year must be between 1 and the current reporting year");
+        }
+        LocalDate start = LocalDate.of(year, 1, 1);
+        LocalDate end = year == today.getYear() ? today.plusDays(1) : start.plusYears(1);
+        int months = year == today.getYear() ? today.getMonthValue() : 12;
+        return transactionDao.getCategoryTrends(userId, start, end, months);
     }
 
     @Transactional
@@ -69,7 +94,7 @@ public class TransactionService {
         // Resolve names to IDs first
         List<Object[]> batchArgs = mappings.stream()
                 .filter(req -> Objects.nonNull(req.getCategoryName())
-                && Objects.nonNull(req.getSubCategoryName()))
+                        && Objects.nonNull(req.getSubCategoryName()))
                 .map(req -> {
                     Long categoryId = categoryMap.get(req.getCategoryName());
 
@@ -94,16 +119,16 @@ public class TransactionService {
                                 }
                                 return map;
                             }
-                            );
+                    );
 
 
-                            Long subCategoryId = subCategoryMap1.getOrDefault(req.getCategoryName(), Map.of())
-                                    .get(req.getSubCategoryName());
+                    Long subCategoryId = subCategoryMap1.getOrDefault(req.getCategoryName(), Map.of())
+                            .get(req.getSubCategoryName());
 
-                            if (subCategoryId == null) {
-                                //TODO : temp workaround, as from UI in case Miscellouns is selected, getting subcategory as Vegetables/Fruits(offline) which is not correct.
-                                subCategoryId = 1l;
-                            }
+                    if (subCategoryId == null) {
+                        //TODO : temp workaround, as from UI in case Miscellouns is selected, getting subcategory as Vegetables/Fruits(offline) which is not correct.
+                        subCategoryId = 1l;
+                    }
 
                     return new Object[]{req.getPayeeName(), categoryId, subCategoryId};
                 })
@@ -114,16 +139,35 @@ public class TransactionService {
     }
 
 
-    @Transactional
-    public void saveTransactionsBatch(List<EnhancedTransaction> transactions) {
+    // TODO : Normalize the payee before saving, save both the original and normalized payee name.
 
+        /*public String normalizePayee(String payee) {
+            if (payee == null) {
+                return null;
+            }
+
+            return payee.trim()
+                    .toUpperCase(Locale.ROOT)
+                    .replaceFirst("^(UPI|POS|NEFT|IMPS)[-\\s:/]*", "")
+                    .replaceAll("\\b(ORDER|TXN|REF)[-\\s:#]*\\d+\\b", "")
+                    .replaceAll("\\s+", " ")
+                    .trim();
+
+                    payee_name        = UPI-SWIGGY-923847
+            normalized_payee  = SWIGGY
+        }*/
+
+    @Transactional
+    public void saveTransactionsBatch(List<EnhancedTransaction> transactions, Long uploadId, Long userId) {
 
         List<Object[]> batchArgs = transactions.stream()
-                .filter(txn -> Objects.nonNull(txn.getCategory())
-                        && Objects.nonNull(txn.getSubcategory()))
+                /*.filter(txn -> Objects.nonNull(txn.getCategory())
+                        && Objects.nonNull(txn.getSubcategory()))*/
+                .filter(txn -> StringUtils.isNotEmpty(txn.getDate()))
                 .map(txn -> {
-                    Long categoryId = categoryMap.get(txn.getCategory());
-                    Long subCategoryId = getSubCategoryId(txn.getCategory(), txn.getSubcategory());
+
+                    Long categoryId = txn.getCategory() != null ? categoryMap.get(txn.getCategory()) : null;
+                    Long subCategoryId = txn.getCategory() != null ? getSubCategoryId(txn.getCategory(), txn.getSubcategory()) : null;
 
                     String dateString = txn.getDate();
 
@@ -133,7 +177,8 @@ public class TransactionService {
                     // Define possible formatters
                     List<DateTimeFormatter> formatters = Arrays.asList(
                             DateTimeFormatter.ofPattern("MM-dd-yyyy"), // e.g. 07-01-2025
-                            DateTimeFormatter.ofPattern("dd/MM/yy")    // e.g. 01/06/25
+                            DateTimeFormatter.ofPattern("dd/MM/yy"),    // e.g. 01/06/25
+                            DateTimeFormatter.ofPattern("yyyy-MM-dd")
                     );
 
                     for (DateTimeFormatter formatter : formatters) {
@@ -145,9 +190,10 @@ public class TransactionService {
                     }
 
 
-
                     return new Object[]{
                             txn.getTransactionId(),
+                            userId,
+                            uploadId,
                             localDate,
                             dateString,
                             txn.getPayee(),
@@ -160,15 +206,11 @@ public class TransactionService {
                 })
                 .toList();
 
-        // 4️⃣ Batch insert
-        String sql = """
-                MERGE INTO transactions (transaction_id, txn_date,txn_date_str, payee, payee_full_name, amount, txn_type, category_id, subcategory_id)
-                KEY(transaction_id)
-                VALUES (?, ?, ?,?, ?, ?, ?, ?, ?);
-                
-        """;
+        transactionDao.saveTransactions(batchArgs);
 
-        jdbcTemplate.batchUpdate(sql, batchArgs);
+
+
+        //transactionDao.saveAll();
     }
 
 // TODO : check why subategory map not getting populated as expected, resulting in
@@ -209,99 +251,30 @@ public class TransactionService {
         return  subCategoryId;
     }
 
-    public LinkedHashMap<String, List<EnhancedTransaction>> updateTransactionDetails(Transactions trans) {
 
-        Map<String, List<EnhancedTransaction>> transactionData = trans.stream().map(t -> {
+    public void updateTransactionDetails(List<EnhancedTransaction> trans, Long userId) {
 
-            EnhancedTransaction newTransaction = new EnhancedTransaction();
-            String transactionAmount = t.getValue("M");
+        List<PayeeCategoryResponse> payeeCategoryResponseList = payeeCategoryService.getByUserId(userId);
 
-
-
-            newTransaction.setDate(t.getValue("D") + " " +
-                    transactionAmount.substring(transactionAmount.indexOf("MTXN TIME ")+1));
-
-            if (t.getNumber().trim().equalsIgnoreCase("000000000000000")) {
-                // case of transaction id being 0 which is causing issue while getting saved to the database.
-
-                String tranId = StringUtils.leftPad(StringUtils.joinWith("",
-                                t.getValue("D").replace("-", ""),
-                                transactionAmount.substring(9).replace(":", "")),
-                        16, "0");
-
-
-                System.out.println("tranId"+ tranId);
-                newTransaction.setTransactionId(tranId);
-            } else {
-                newTransaction.setTransactionId(t.getNumber());
-            }
-            newTransaction.setAmount(t.getAmount());
-            newTransaction.setPayeeFullName(t.getPayee().contains("-") &&
-                    t.getPayee().contains("@") ?t.getPayee().substring(t.getPayee().indexOf("-")+1,t.getPayee().indexOf("@"))
-                    : t.getPayee());
-           String payeeName= t.getPayee().contains("-") ? t.getPayee().split("-")[1].trim(): t.getPayee().trim();
-            newTransaction.setPayee(payeeName);
-            newTransaction.setTxnType(newTransaction.getAmount()<0?"Debit":"Credit");
-
-            List<PayeeCategoryResponse> payeeCategoryResponseList = getPayeeCategoryMappings();
+        trans.forEach(t -> {
 
             if (payeeCategoryResponseList != null && !payeeCategoryResponseList.isEmpty()) {
                 Optional<PayeeCategoryResponse> optionalPayeeCategoryResponse = payeeCategoryResponseList.stream()
                         .filter(payeeCategoryResponse -> payeeCategoryResponse.getPayeeName()
-                                .equalsIgnoreCase(payeeName))
+                                .equalsIgnoreCase(t.getPayee()))
                         .findAny();
 
                 optionalPayeeCategoryResponse.ifPresent(payeeCategoryResponse -> {
-                    newTransaction.setCategory(payeeCategoryResponse.getCategoryName());
-                    newTransaction.setSubcategory(payeeCategoryResponse.getSubCategoryName());
+                    t.setCategory(payeeCategoryResponse.getCategoryName());
+                    t.setSubcategory(payeeCategoryResponse.getSubCategoryName());
                 });
             }
+        });
 
-            return newTransaction;
-        }).collect(Collectors.groupingBy(EnhancedTransaction::getPayee));
-
-        // Flatten and sort all transactions by amount after grouping
-        LinkedHashMap<String, List<EnhancedTransaction>> transactionMap = transactionData.entrySet().stream()
-                .sorted(Comparator.comparingDouble(e -> e.getValue().stream().mapToDouble(EnhancedTransaction::getAmount).sum()))
-                .collect(toMap(
-                        Map.Entry::getKey,
-                        Map.Entry::getValue,
-                        (e1, e2) -> e1,
-                        LinkedHashMap::new // Preserve sorted order
-                ));
-
-        return transactionMap;
+        //return getTransactionsByPayeeSortedByAmount(trans);
     }
 
 
-    public List<EnhancedTransaction> getTransactionsByYear(int year) {
 
-       return jdbcTemplate.query(
-                "SELECT c.name AS category_name,\n" +
-                        "       sc.name AS subcategory_name,\n" +
-                        "       t.*\n" +
-                        "FROM transactions t\n" +
-                        "JOIN categories c\n" +
-                        "  ON t.category_id = c.id\n" +
-                        "JOIN subcategories sc\n" +
-                        "  ON t.category_id = sc.category_id\n" +
-                        " AND t.subcategory_id = sc.id\n" +
-                        "WHERE YEAR(t.txn_date) = ?;\n",
-                new Object[]{year},
-                (rs, rowNum) -> {
 
-                    EnhancedTransaction enhancedTransaction = new EnhancedTransaction();
-
-                    enhancedTransaction.setTransactionId(rs.getString("transaction_id"));
-                    enhancedTransaction.setDate(rs.getString("txn_date"));
-                    enhancedTransaction.setAmount(rs.getDouble("amount"));
-                    enhancedTransaction.setPayeeFullName(rs.getString("payee_full_name"));
-                    enhancedTransaction.setPayee(rs.getString("payee"));
-                    enhancedTransaction.setTxnType(rs.getString("txn_type"));
-                    enhancedTransaction.setCategory(rs.getString("category_name"));
-                    enhancedTransaction.setSubcategory(rs.getString("subcategory_name"));
-
-                    return enhancedTransaction;
-                });
-    }
 }
