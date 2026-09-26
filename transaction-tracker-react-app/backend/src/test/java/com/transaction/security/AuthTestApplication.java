@@ -9,6 +9,8 @@ import com.transaction.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.h2.H2ConsoleProperties;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.*;
 
 @SpringBootConfiguration
 @EnableAutoConfiguration
+@EnableConfigurationProperties(H2ConsoleProperties.class)
 @Import({SecurityConfig.class, JwtService.class, CookieService.class, AuthSessionService.class,
         AuthSessionRepository.class, UserService.class, UserRepository.class, AuthController.class})
 class AuthTestApplication {
@@ -37,9 +40,6 @@ class AuthTestApplication {
                 .jwkSetUri("https://example.invalid/keys")
                 .userInfoUri("https://example.invalid/user").userNameAttributeName("sub").build());
     }
-
-    @Bean
-    Probe probe() { return new Probe(); }
 
     @RestController
     static class Probe {
