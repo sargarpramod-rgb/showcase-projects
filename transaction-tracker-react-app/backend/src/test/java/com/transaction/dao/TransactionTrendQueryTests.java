@@ -5,7 +5,11 @@ import com.transaction.model.YearlyTrendData;
 import com.transaction.model.CategoryTrendData;
 import org.junit.jupiter.api.*;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.embedded.*;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.flywaydb.core.Flyway;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -16,23 +20,34 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@Testcontainers
 class TransactionTrendQueryTests {
-    private EmbeddedDatabase database;
+    @Container
+    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.4");
+
+    @BeforeAll
+    static void migrate() {
+        // Programmatic Flyway is independent of the H2 tests' disabled Boot auto-configuration.
+        Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration/postgresql")
+                .cleanDisabled(true)
+                .load()
+                .migrate();
+    }
     private JdbcTemplate jdbc;
     private TransactionDao dao;
     private static final LocalDate TODAY = LocalDate.of(2026, 9, 15);
 
     @BeforeEach
     void setup() {
-        database = new EmbeddedDatabaseBuilder().generateUniqueName(true).setType(EmbeddedDatabaseType.H2)
-                .addScript("schema.sql").addScript("data.sql").build();
-        jdbc = new JdbcTemplate(database);
+        jdbc = new JdbcTemplate(new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
+        jdbc.update("DELETE FROM transactions");
         dao = new TransactionDao();
         ReflectionTestUtils.setField(dao, "jdbcTemplate", jdbc);
     }
 
-    @AfterEach
-    void close() { database.shutdown(); }
 
     @Test
     void missingMonthIsFilledBeforeLagAndZeroDenominatorIsNull() {
@@ -188,7 +203,7 @@ class TransactionTrendQueryTests {
         money("10.10", food.get(0).getTotalAmount());
         money("0", food.get(1).getTotalAmount());
         assertNull(food.get(0).getPreviousMonthAmount());
-        //assertNull(food.get(1).getPercentageChange());
+        money("-100.00", food.get(1).getPercentageChange());
         money("20.20", uncategorized.get(2).getTotalAmount());
         assertEquals("Uncategorized", uncategorized.get(0).getCategory());
         assertFalse(rows.stream().anyMatch(r -> r.getCategoryId() != null && r.getCategoryId() == 3L));
@@ -206,6 +221,42 @@ class TransactionTrendQueryTests {
         money("100.00", rows.get(1).getPercentageChange());
     }
 
+    @Test
+    void categoryCutoffExcludesFutureOnlyCategoriesAndOtherUsers() {
+        insert(1, "2026-09-15", "-0.10", "DEBIT", 8);
+        insert(1, "2026-09-16", "-99", "DEBIT", 9);
+        insert(1, "2026-10-01", "-99", "DEBIT", 8);
+        insert(2, "2026-01-01", "-99", "DEBIT", 1);
+        var rows = dao.getCategoryTrends(1, LocalDate.of(2026, 1, 1), TODAY.plusDays(1), 9);
+        assertEquals(9, rows.size());
+        assertTrue(rows.stream().allMatch(row -> Long.valueOf(8).equals(row.getCategoryId())));
+        assertEquals("2026-09", rows.get(8).getMonth());
+        money("0.10", rows.get(8).getTotalAmount());
+        assertNull(rows.get(8).getPercentageChange());
+    }
+
+    @Test
+    void subcategoriesRollUpOnceIntoTheirCategory() {
+        insert(1, "2025-01-01", "-0.10", "DEBIT", 8);
+        insert(1, "2025-01-02", "-0.20", "DEBIT", 8);
+        jdbc.update("UPDATE transactions SET subcategory_id = 25 WHERE txn_date = ?", Date.valueOf("2025-01-01"));
+        jdbc.update("UPDATE transactions SET subcategory_id = 26 WHERE txn_date = ?", Date.valueOf("2025-01-02"));
+        var rows = dao.getCategoryTrends(1, LocalDate.of(2025, 1, 1), LocalDate.of(2026, 1, 1), 12);
+        assertEquals(12, rows.size());
+        assertEquals("Food", rows.get(0).getCategory());
+        money("0.30", rows.get(0).getTotalAmount());
+        money("0.30", monthly(1, 2025).get(0).getExpenses());
+        assertEquals(2, monthly(1, 2025).get(0).getTransactionCount());
+        money("0.30", yearly(1).get(0).getExpenses());
+    }
+
+    @Test
+    void emptyUserHasNoYearlyOrCategoryRows() {
+        insert(2, "2025-01-01", "-10", "DEBIT", 8);
+        assertTrue(yearly(1).isEmpty());
+        assertTrue(dao.getCategoryTrends(1, LocalDate.of(2025, 1, 1),
+                LocalDate.of(2026, 1, 1), 12).isEmpty());
+    }
     private List<MonthlyTrendData> monthly(long user, int year) {
         LocalDate start = LocalDate.of(year, 1, 1);
         boolean current = year == TODAY.getYear();

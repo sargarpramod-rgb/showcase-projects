@@ -98,7 +98,7 @@ public class TransactionDao {
             WHERE flow_type = 'EXPENSE'
             """;
 
-    // H2 2.2.224 loses parameter/type bindings through chained CTEs.
+    // PostgreSQL month offsets preserve the start-date/month-count binding order.
     // Derived tables preserve JDBC bindings while keeping aggregation and LAG in SQL.
     static final String MONTHLY_TRENDS = """
             SELECT month_start, income, expenses, investments,
@@ -119,8 +119,8 @@ public class TransactionDao {
                            COALESCE(t.transaction_count, 0) AS transaction_count,
                            COALESCE(t.unclassified_count, 0) AS unclassified_count
                     FROM (
-                        SELECT CAST(DATEADD('MONTH', x, CAST(? AS DATE)) AS DATE) AS month_start
-                        FROM SYSTEM_RANGE(0, ?)
+                        SELECT CAST(CAST(? AS DATE) + x * INTERVAL '1 month' AS DATE) AS month_start
+                        FROM generate_series(0, CAST(? AS INTEGER)) AS months(x)
                     ) m
                     LEFT JOIN (
                         SELECT CAST(DATE_TRUNC('MONTH', txn_date) AS DATE) AS month_start,
@@ -162,8 +162,8 @@ public class TransactionDao {
             ORDER BY trend_year
             """;
 
-    // H2-specific month generation is isolated here; PostgreSQL can replace
-    // SYSTEM_RANGE/DATEADD with generate_series/date arithmetic.
+    // Fill each expense category across the requested PostgreSQL month series.
+    // Keep missing months before LAG so comparisons use the previous calendar month.
     static final String CATEGORY_TRENDS = """
             SELECT month_start, category_id, category, total_amount, transaction_count,
                    previous_month_amount,
@@ -181,8 +181,8 @@ public class TransactionDao {
                             COALESCE(t.total_amount, CAST(0 AS DECIMAL(15, 2))) AS total_amount,
                             COALESCE(t.transaction_count, 0) AS transaction_count
                     FROM (
-                        SELECT CAST(DATEADD('MONTH', x, CAST(? AS DATE)) AS DATE) AS month_start
-                        FROM SYSTEM_RANGE(0, ?)
+                        SELECT CAST(CAST(? AS DATE) + x * INTERVAL '1 month' AS DATE) AS month_start
+                        FROM generate_series(0, CAST(? AS INTEGER)) AS months(x)
                     ) m
                     CROSS JOIN (
                         SELECT DISTINCT category_id,
