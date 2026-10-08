@@ -5,9 +5,9 @@ import { Tooltip as MuiTooltip,AppBar, Tabs, Tab, Box, Typography, Button, Table
     MenuItem, Select, FormControl} from "@mui/material";
 import {TablePagination} from "@mui/material";
 import ClearIcon from "@mui/icons-material/Clear"; // Import Clear Icon
-import { fetchTransactionCategories } from "../../api/transactionsApi";
 
-export default function Transactions({ filters, transactionsData, modalHandlers }) {
+
+export default function Transactions({ filters, transactionsData, modalHandlers, categoryCatalog }) {
 
       const { filterText, setFilterText,showUncategorized } = filters;
       const { aggregatedData, data, setData, smallTransactions } = transactionsData;
@@ -17,39 +17,9 @@ export default function Transactions({ filters, transactionsData, modalHandlers 
   const [selected, setSelected] = useState([]);
   const [bulkCategory, setBulkCategory] = useState('');
   const [bulkSubcategory, setBulkSubcategory] = useState('');
-const [categories, setCategories] = useState([]);
-  const [categorySubcategories, setCategorySubcategories] = useState({});
- const [categoryJson, setCategoryJson] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { categories, categorySubcategories } = categoryCatalog;
 
-
-  // ====== Call API on mount ======
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const json = await fetchTransactionCategories();
-
-        setCategoryJson(json);
-
-        // Build categories array
-        setCategories(json.map((c) => c.categoryName));
-
-        // Build subcategory map
-        const subMap = {};
-          json.forEach((item) => {
-            subMap[item.categoryName] = item.subCategories;
-          });
-
-        setCategorySubcategories(subMap);
-        setLoading(false);
-      } catch (error) {
-        console.error("Failed to load categories:", error);
-        setLoading(false);
-      }
-    };
-
-    fetchCategories();
-  }, []);
+  useEffect(() => { setPage(0); }, [filterText, showUncategorized, aggregatedData.length]);
 // Toggle all rows
 const handleSelectAll = (event) => {
   if (event.target.checked) {
@@ -166,7 +136,7 @@ return (
                           onChange={(e) => {
                             setBulkCategory(e.target.value);
                             const subs = categorySubcategories[e.target.value] || [];
-                            setBulkSubcategory(subs[0] || "");
+                            setBulkSubcategory(subs[0]?.id ?? "");
                           }}
                           displayEmpty
                         >
@@ -174,8 +144,8 @@ return (
                             Select Category
                           </MenuItem>
                           {categories.map((cat) => (
-                            <MenuItem key={cat} value={cat}>
-                              {cat}
+                            <MenuItem key={cat.id} value={cat.id}>
+                              {cat.name}
                             </MenuItem>
                           ))}
                         </Select>
@@ -192,7 +162,7 @@ return (
                         >
                           <MenuItem value="" disabled>Select Subcategory</MenuItem>
                           {(categorySubcategories[bulkCategory] || []).map((subcat) => (
-                            <MenuItem key={subcat} value={subcat}>{subcat}</MenuItem>
+                            <MenuItem key={subcat.id} value={subcat.id}>{subcat.name}</MenuItem>
                           ))}
                         </Select>
                       </FormControl>

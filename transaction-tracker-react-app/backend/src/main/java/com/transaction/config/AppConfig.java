@@ -16,12 +16,14 @@ public class AppConfig {
 
     @Bean
     public Map<String,Long> categoryMap() {
-        return transactionDao.populateCategoryMap();
+        //return transactionDao.populateCategoryMap();
+        return null;
     }
 
     @Bean
     public Map<String, Map<String, Long>> subCategoryMap(@Autowired Map<String,Long> categoryMap) {
-        return transactionDao.populateSubCategoryMap(categoryMap);
+        //return transactionDao.populateSubCategoryMap(categoryMap);
+        return null;
     }
 
 }

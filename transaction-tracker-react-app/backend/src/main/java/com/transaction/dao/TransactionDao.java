@@ -1,9 +1,7 @@
 package com.transaction.dao;
 
-import com.transaction.model.EnhancedTransaction;
-import com.transaction.model.MonthlyTrendData;
-import com.transaction.model.YearlyTrendData;
-import com.transaction.model.CategoryTrendData;
+import com.transaction.model.*;
+
 import java.sql.Date;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -12,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,8 +22,8 @@ public class TransactionDao {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    private String GET_TRANSACTIONS_BY_UPLOAD_ID = "SELECT c.name AS category_name,\n" +
-            "       sc.name AS subcategory_name,\n" +
+    private String GET_TRANSACTIONS_BY_UPLOAD_ID = "SELECT c.id AS category_id,\n" +
+            "       sc.id AS subcategory_id,\n" +
             "       t.*\n" +
             "FROM transactions t\n" +
             "LEFT JOIN categories c\n" +
@@ -43,7 +42,7 @@ public class TransactionDao {
             "JOIN subcategories sc\n" +
             "  ON t.category_id = sc.category_id\n" +
             " AND t.subcategory_id = sc.id\n" +
-            "WHERE YEAR(t.txn_date) = ? AND t.user_id = ?;\n";
+            "WHERE EXTRACT(YEAR FROM t.txn_date) = ? AND t.user_id = ?;\n";
 
     private String GET_TRANSACTIONS_BY_USER_ID = "SELECT c.name AS category_name,\n" +
             "       sc.name AS subcategory_name,\n" +
@@ -98,7 +97,7 @@ public class TransactionDao {
             WHERE flow_type = 'EXPENSE'
             """;
 
-    // H2 2.2.224 loses parameter/type bindings through chained CTEs.
+    // PostgreSQL month offsets preserve the start-date/month-count binding order.
     // Derived tables preserve JDBC bindings while keeping aggregation and LAG in SQL.
     static final String MONTHLY_TRENDS = """
             SELECT month_start, income, expenses, investments,
@@ -119,8 +118,8 @@ public class TransactionDao {
                            COALESCE(t.transaction_count, 0) AS transaction_count,
                            COALESCE(t.unclassified_count, 0) AS unclassified_count
                     FROM (
-                        SELECT CAST(DATEADD('MONTH', x, CAST(? AS DATE)) AS DATE) AS month_start
-                        FROM SYSTEM_RANGE(0, ?)
+                        SELECT CAST(CAST(? AS DATE) + x * INTERVAL '1 month' AS DATE) AS month_start
+                        FROM generate_series(0, CAST(? AS INTEGER)) AS months(x)
                     ) m
                     LEFT JOIN (
                         SELECT CAST(DATE_TRUNC('MONTH', txn_date) AS DATE) AS month_start,
@@ -162,8 +161,8 @@ public class TransactionDao {
             ORDER BY trend_year
             """;
 
-    // H2-specific month generation is isolated here; PostgreSQL can replace
-    // SYSTEM_RANGE/DATEADD with generate_series/date arithmetic.
+    // Fill each expense category across the requested PostgreSQL month series.
+    // Keep missing months before LAG so comparisons use the previous calendar month.
     static final String CATEGORY_TRENDS = """
             SELECT month_start, category_id, category, total_amount, transaction_count,
                    previous_month_amount,
@@ -181,8 +180,8 @@ public class TransactionDao {
                             COALESCE(t.total_amount, CAST(0 AS DECIMAL(15, 2))) AS total_amount,
                             COALESCE(t.transaction_count, 0) AS transaction_count
                     FROM (
-                        SELECT CAST(DATEADD('MONTH', x, CAST(? AS DATE)) AS DATE) AS month_start
-                        FROM SYSTEM_RANGE(0, ?)
+                        SELECT CAST(CAST(? AS DATE) + x * INTERVAL '1 month' AS DATE) AS month_start
+                        FROM generate_series(0, CAST(? AS INTEGER)) AS months(x)
                     ) m
                     CROSS JOIN (
                         SELECT DISTINCT category_id,
@@ -210,22 +209,71 @@ public class TransactionDao {
             """;
 
     private String SAVE_TRANSACTIONS = """
-                MERGE INTO transactions (transaction_id,user_id,upload_Id,txn_date,txn_date_str, payee, payee_full_name, amount, txn_type, category_id, subcategory_id)
-                KEY(transaction_id)
-                VALUES (?, ?,?, ?,?, ?, ?, ?, ?, ?,?);
+                INSERT INTO transactions (transaction_id,user_id,upload_Id,txn_date,txn_date_str, payee, payee_full_name, amount, txn_type, category_id, subcategory_id)
+                VALUES (?, ?,?, ?,?, ?, ?, ?, ?, ?,?)
+                ON CONFLICT (transaction_id) DO UPDATE SET
+                    user_id = EXCLUDED.user_id,
+                    upload_id = EXCLUDED.upload_id,
+                    txn_date = EXCLUDED.txn_date,
+                    txn_date_str = EXCLUDED.txn_date_str,
+                    payee = EXCLUDED.payee,
+                    payee_full_name = EXCLUDED.payee_full_name,
+                    amount = EXCLUDED.amount,
+                    txn_type = EXCLUDED.txn_type,
+                    category_id = EXCLUDED.category_id,
+                    subcategory_id = EXCLUDED.subcategory_id;
                """;
 
     public Map<String, Long> populateCategoryMap() {
 
-        return jdbcTemplate.query(
+        List<Category> categoryList = new ArrayList<>();
+
+        /*return jdbcTemplate.query(
                 "SELECT id, name FROM categories",
                 rs -> {
                     Map<String, Long> map = new HashMap<>();
                     while (rs.next()) {
+                        categoryList.add(new Category(rs.getLong("id"), rs.getString("name")));
                         map.put(rs.getString("name"),
                                 rs.getLong("id"));
                     }
                     return map;
+                }
+        );*/
+
+        return new HashMap<>();
+    }
+
+    public List<CategoryResponse> populateCategoryResponseList() {
+
+        List<CategoryResponse> categoryResponseList = new ArrayList<>();
+
+        return jdbcTemplate.query(
+                "SELECT c.id as category_id,c.name AS category_name, sc.id AS subcategory_id, sc.name AS subcategory_name\n" +
+                        "FROM categories c\n" +
+                        "join subcategories sc\n" +
+                        "on c.id=sc.category_id",
+                rs -> {
+                    while (rs.next()) {
+                        Long categoryId = rs.getLong("category_id");
+                        String categoryName = rs.getString("category_name");
+                        Long subcategoryId = rs.getLong("subcategory_id");
+                        String subCategoryName = rs.getString("subcategory_name");
+
+                        CategoryResponse categoryResponse = categoryResponseList.stream()
+                                .filter(c -> c.getCategoryId().equals(categoryId))
+                                .findFirst()
+                                .orElseGet(() -> {
+                                    CategoryResponse newCategoryResponse = new CategoryResponse();
+                                    newCategoryResponse.setCategoryName(categoryName);
+                                    newCategoryResponse.setCategoryId(categoryId);
+                                    categoryResponseList.add(newCategoryResponse);
+                                    return newCategoryResponse;
+                                });
+
+                        categoryResponse.getSubCategories().add(new SubCategory(subcategoryId, subCategoryName));
+                    }
+                    return categoryResponseList;
                 }
         );
     }

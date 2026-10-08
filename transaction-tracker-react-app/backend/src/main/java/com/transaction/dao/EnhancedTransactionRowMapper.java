@@ -15,12 +15,15 @@ public class EnhancedTransactionRowMapper implements RowMapper<EnhancedTransacti
 
             enhancedTransaction.setTransactionId(rs.getString("transaction_id"));
             enhancedTransaction.setDate(rs.getString("txn_date"));
-            enhancedTransaction.setAmount(rs.getDouble("amount"));
+            enhancedTransaction.setAmount(rs.getBigDecimal("amount"));
             enhancedTransaction.setPayeeFullName(rs.getString("payee_full_name"));
             enhancedTransaction.setPayee(rs.getString("payee"));
             enhancedTransaction.setTxnType(rs.getString("txn_type"));
-            enhancedTransaction.setCategory(rs.getString("category_name"));
-            enhancedTransaction.setSubcategory(rs.getString("subcategory_name"));
+
+            long category_id =  rs.getLong("category_id");
+            enhancedTransaction.setCategory(rs.wasNull()? null: category_id);
+            long subCategory_id = rs.getLong("subcategory_id");
+            enhancedTransaction.setSubcategory(rs.wasNull()? null: subCategory_id);
 
             return enhancedTransaction;
     }

@@ -2,15 +2,17 @@ package com.transaction.model;
 
 import lombok.Data;
 
+import java.math.BigDecimal;
+
 @Data
 public class EnhancedTransaction {
 
     String transactionId;
     String date;
     String payee;
-    Double amount;
+    BigDecimal amount;
     String payeeFullName;
-    String category;
-    String subcategory;
+    Long category;
+    Long subcategory;
     String txnType;
 }

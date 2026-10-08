@@ -12,10 +12,8 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Component
 public class QifTransactionFileReaderStrategy implements TransactionFileReaderStrategy {
@@ -45,14 +43,14 @@ public class QifTransactionFileReaderStrategy implements TransactionFileReaderSt
             } else {
                 newTransaction.setTransactionId(t.getNumber());
             }
-            newTransaction.setAmount(t.getAmount());
+            newTransaction.setAmount(BigDecimal.valueOf(t.getAmount()));
             TransactionUtil.setPayeeDetails(newTransaction,t.getPayee());
             /*newTransaction.setPayeeFullName(t.getPayee().contains("-") &&
                     t.getPayee().contains("@") ? t.getPayee().substring(t.getPayee().indexOf("-") + 1, t.getPayee().indexOf("@"))
                     : t.getPayee());
             String payeeName = t.getPayee().contains("-") ? t.getPayee().split("-")[1].trim() : t.getPayee().trim();
             newTransaction.setPayee(payeeName);*/
-            newTransaction.setTxnType(newTransaction.getAmount() < 0 ? "Debit" : "Credit");
+            newTransaction.setTxnType(newTransaction.getAmount().compareTo(BigDecimal.ZERO) < 0 ? "Debit" : "Credit");
             return newTransaction;
         }).toList();
 
