@@ -2,10 +2,10 @@ package com.transaction.util;
 
 import com.transaction.model.EnhancedTransaction;
 
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static java.util.stream.Collectors.toMap;
@@ -19,18 +19,26 @@ public class TransactionUtil {
         enhancedTransaction.setPayee(payeeName.contains("-") ? payeeName.split("-")[1].trim() : payeeName.trim());
     }
 
-    //TODO: Move this logic to UI.
-    public static LinkedHashMap<String, List<EnhancedTransaction>> getTransactionsByPayeeSortedByAmount(List<EnhancedTransaction> enhancedTransactionList) {
+    public static LocalDate getTransactionLocalDate(String dateString){
 
-        Map<String, List<EnhancedTransaction>> transactionData = enhancedTransactionList.stream().collect(Collectors.groupingBy(EnhancedTransaction::getPayee));
-        LinkedHashMap<String, List<EnhancedTransaction>> transactionMap = transactionData.entrySet().stream()
-                .sorted(Comparator.comparingDouble(e -> e.getValue().stream().mapToDouble(EnhancedTransaction::getAmount).sum()))
-                .collect(toMap(
-                        Map.Entry::getKey,
-                        Map.Entry::getValue,
-                        (e1, e2) -> e1,
-                        LinkedHashMap::new // Preserve sorted order
-                ));
-        return transactionMap;
+        // Remove "TXN TIME " and get only the date part
+        String datePart = dateString.split(" TXN TIME ")[0];
+        LocalDate localDate = null;
+        // Define possible formatters
+        List<DateTimeFormatter> formatters = Arrays.asList(
+                DateTimeFormatter.ofPattern("MM-dd-yyyy"), // e.g. 07-01-2025
+                DateTimeFormatter.ofPattern("dd/MM/yy"),    // e.g. 01/06/25
+                DateTimeFormatter.ofPattern("yyyy-MM-dd")
+        );
+
+        for (DateTimeFormatter formatter : formatters) {
+            try {
+                localDate = LocalDate.parse(datePart, formatter);
+            } catch (DateTimeParseException e) {
+                // try next formatter
+            }
+        }
+
+        return localDate;
     }
 }

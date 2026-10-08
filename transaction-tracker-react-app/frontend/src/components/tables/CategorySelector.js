@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { MenuItem, Select, FormControl, CircularProgress } from "@mui/material";
+import React from "react";
+import { MenuItem, Select, FormControl } from "@mui/material";
 
 export default function CategorySelector({
   category,
@@ -10,7 +10,7 @@ export default function CategorySelector({
   payee,
   smallTransactions,
   categories = [],                // default to empty array
-    categorySubcategories = {},    // default to empty object
+  categorySubcategories = {},    // default to empty object
   showUncategorized
 
 }) {
@@ -28,8 +28,8 @@ export default function CategorySelector({
               ...item,
               category: selectedCategory,
               subcategory: showUncategorized
-                               ? "" // leave blank
-                               : (categorySubcategories[selectedCategory]?.[0] || "")
+                               ? null // leave blank
+                               : (categorySubcategories[selectedCategory]?.[0]?.id ?? null)
 
             };
           }
@@ -68,7 +68,9 @@ export default function CategorySelector({
         >
           <MenuItem value="" disabled>Select Category</MenuItem>
           {categories.map(cat => (
-            <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+            <MenuItem key={cat.id} value={cat.id}>
+              {cat.name}
+            </MenuItem>
           ))}
         </Select>
       )}
@@ -82,7 +84,9 @@ export default function CategorySelector({
         >
           <MenuItem value="" disabled>Select Subcategory</MenuItem>
           {(categorySubcategories[category] || []).map(subcat => (
-            <MenuItem key={subcat} value={subcat}>{subcat}</MenuItem>
+            <MenuItem key={subcat.id} value={subcat.id}>
+              {subcat.name}
+            </MenuItem>
           ))}
         </Select>
       )}

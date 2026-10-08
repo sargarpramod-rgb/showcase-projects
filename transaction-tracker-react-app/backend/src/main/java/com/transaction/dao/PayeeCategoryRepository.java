@@ -3,14 +3,10 @@ package com.transaction.dao;
 import com.transaction.model.PayeeCategoryResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 @Repository
 @RequiredArgsConstructor
@@ -19,15 +15,15 @@ public class PayeeCategoryRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    @Autowired
+    //@Autowired
     Map<String,Long> categoryMap;
 
     private static final String GET_PAYEE_CATEGORY_MAPPING_BY_USER_ID =  """
               SELECT
               pc.payee_name,
               pc.user_id,
-              c.name AS category_name,
-              sc.name AS subcategory_name
+              c.id AS category_id,
+              sc.id AS subcategory_id
               FROM payee_category_mapping pc
                 JOIN categories c
               ON pc.category_id = c.id
@@ -39,63 +35,32 @@ public class PayeeCategoryRepository {
 
 
     private static final String SAVE_PAYEE_CATEGORY_MAPPING = """
-                MERGE INTO payee_category_mapping (payee_name, category_id, subcategory_id, user_id)
-                KEY (payee_name)
-                VALUES (?, ?, ?, ?);
+                INSERT INTO payee_category_mapping (payee_name, category_id, subcategory_id, user_id)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (payee_name) DO UPDATE SET
+                    category_id = EXCLUDED.category_id,
+                    subcategory_id = EXCLUDED.subcategory_id,
+                    user_id = EXCLUDED.user_id;
     """;
 
     public List<PayeeCategoryResponse> getByUserId(Long userId) {
 
         return jdbcTemplate.query(GET_PAYEE_CATEGORY_MAPPING_BY_USER_ID, new Object[]{userId}, (rs, rowNum) ->
                 new PayeeCategoryResponse(rs.getString("payee_name"),
-                        rs.getString("category_name"),
-                        rs.getString("subcategory_name"),
+                        rs.getLong("category_id"),
+                        rs.getLong("subcategory_id"),
                         rs.getLong("user_id")));
     }
 
-    //TODO: Check if categoryId can be passed back from UI.
-    public void saveAll(List<PayeeCategoryResponse> payeeCategoryResponses) {
+    public void saveAll(Set<PayeeCategoryResponse> payeeCategoryResponses) {
 
-        // Resolve names to IDs first
+        // Persist the selected IDs
         List<Object[]> batchArgs = payeeCategoryResponses.stream()
-                .filter(req -> Objects.nonNull(req.getCategoryName())
-                        && Objects.nonNull(req.getSubCategoryName()))
+                .filter(req -> Objects.nonNull(req.getCategoryId())
+                        && Objects.nonNull(req.getSubCategoryId()))
                 .map(req -> {
-                    Long categoryId = categoryMap.get(req.getCategoryName());
-
-                    Map<String, Map<String, Long>> subCategoryMap1 = jdbcTemplate.query(
-                            "SELECT id, category_id, name FROM subcategories",
-                            rs -> {
-                                Map<String, Map<String, Long>> map = new HashMap<>();
-                                while (rs.next()) {
-                                    Long categoryId1 = rs.getLong("category_id");
-                                    String subName = rs.getString("name");
-                                    Long subId = rs.getLong("id");
-
-                                    String categoryName = categoryMap.entrySet()
-                                            .stream()
-                                            .filter(e -> e.getValue().equals(categoryId1))
-                                            .map(Map.Entry::getKey)
-                                            .findFirst()
-                                            .orElse(null);
-
-                                    map.computeIfAbsent(categoryName, k -> new HashMap<>())
-                                            .put(subName, subId);
-                                }
-                                return map;
-                            }
-                    );
-
-
-                    Long subCategoryId = subCategoryMap1.getOrDefault(req.getCategoryName(), Map.of())
-                            .get(req.getSubCategoryName());
-
-                    if (subCategoryId == null) {
-                        //TODO : temp workaround, as from UI in case Miscellouns is selected, getting subcategory as Vegetables/Fruits(offline) which is not correct.
-                        subCategoryId = 1l;
-                    }
-
-                    return new Object[]{req.getPayeeName(), categoryId, subCategoryId,req.getUserId()};
+                    return new Object[]{req.getPayeeName(), req.getCategoryId(),
+                            req.getSubCategoryId(), req.getUserId()};
                 })
                 .toList();
 

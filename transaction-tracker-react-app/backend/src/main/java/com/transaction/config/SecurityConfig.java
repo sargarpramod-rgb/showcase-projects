@@ -44,6 +44,8 @@ public class SecurityConfig {
     private String frontendUrl;
     @Value("${app.cookie.secure:true}")
     private boolean secureCookies;
+    @Value("${spring.h2.console.enabled:false}")
+    private boolean h2ConsoleEnabled;
 
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http, JwtAuthFilter jwtAuthFilter) throws Exception {
@@ -52,17 +54,21 @@ public class SecurityConfig {
         csrfRepository.setCookieCustomizer(cookie -> cookie.path("/").httpOnly(true)
                 .secure(secureCookies).sameSite("Strict"));
 
+        if (h2ConsoleEnabled) {
+            var h2Console = PathRequest.toH2Console();
+            // H2 console forms do not support CSRF tokens. API and logout remain protected.
+            http.csrf(csrf -> csrf.ignoringRequestMatchers(h2Console))
+                    .authorizeHttpRequests(auth -> auth.requestMatchers(h2Console).permitAll())
+                    .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin));
+        }
+
         http.cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                // H2 console forms do not support CSRF tokens. API and logout remain protected.
-                .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository)
-                        .ignoringRequestMatchers(PathRequest.toH2Console()))
+                .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(PathRequest.toH2Console()).permitAll()
                         .requestMatchers("/auth/verify", "/api/**").authenticated()
                         .requestMatchers("/auth/**", "/h2-console/**", "/error").permitAll()
                         .anyRequest().permitAll())
-                .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
                 // Application logout must go through durable session revocation.
                 .logout(logout -> logout.disable())
                 .oauth2Login(oauth -> oauth.successHandler(oAuthSuccessHandler()))

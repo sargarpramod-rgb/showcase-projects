@@ -11,10 +11,10 @@ import { getPeriodLabel } from "../utils/dateUtils";
 import Transactions from "../components/tables/Transactions";
 import PayeeTransactionsDialog from "../components/dialogs/PayeeTransactionsDialog";
 import SuccessDialog from "../components/dialogs/SuccessDialog";
-import { aggregateTransactions } from "../utils/transactionUtils";
+import { buildCategoryCatalog, matchesTransactionGroup } from "../utils/categoryCatalog";
 import SummaryView from "../components/summary/SummaryView"
 import GroupIcon from '@mui/icons-material/Group';
-import { saveTransactions } from "../api/transactionsApi";
+import { saveTransactions, fetchTransactionCategories } from "../api/transactionsApi";
 
 export default function UploadScreen({ setActiveScreen,setSaving, onBack,data,setData}) {
 
@@ -25,6 +25,16 @@ export default function UploadScreen({ setActiveScreen,setSaving, onBack,data,se
    const [showIncome, setShowIncome] = useState(false);
    const [isSaved, setIsSaved] = useState(false);
    const [uploadId, setUploadId] = useState(null);
+   const [categoryJson, setCategoryJson] = useState([]);
+   const categoryCatalog = useMemo(() => buildCategoryCatalog(categoryJson), [categoryJson]);
+
+   useEffect(() => {
+     let active = true;
+     fetchTransactionCategories()
+       .then(json => { if (active) setCategoryJson(json); })
+       .catch(error => console.error("Failed to load categories:", error));
+     return () => { active = false; };
+   }, []);
 
    // Update uploadId only when the API response uploadId changes.
    useEffect(() => {
@@ -126,19 +136,7 @@ export default function UploadScreen({ setActiveScreen,setSaving, onBack,data,se
    // Apply UI filters without changing baseAggregatedData.
    const aggregatedData = useMemo(() => {
      return baseAggregatedData
-       .filter(item => {
-         if (!filterText) {
-           return true;
-         }
-
-         const searchText = filterText.trim().toLowerCase();
-
-         return (
-           item.payee?.trim().toLowerCase().includes(searchText) ||
-           item.category?.trim().toLowerCase().includes(searchText) ||
-           item.subcategory?.trim().toLowerCase().includes(searchText)
-         );
-       })
+       .filter(item => matchesTransactionGroup(item, filterText, categoryCatalog))
        .map(item => {
          const transactions = Array.isArray(item.transactions)
            ? item.transactions
@@ -170,6 +168,7 @@ export default function UploadScreen({ setActiveScreen,setSaving, onBack,data,se
    }, [
      baseAggregatedData,
      filterText,
+     categoryCatalog,
      showUncategorized,
      showIncome
    ]);
@@ -205,7 +204,11 @@ const handleSaveAndClose = async (event) => {
      try {
              event.preventDefault();
 
-             const result = await saveTransactions(uploadId, aggregatedData);
+             const transactions = aggregatedData.flatMap(
+                   (group) => group.transactions ?? []
+                 );
+
+             const result = await saveTransactions(uploadId, transactions);
              setIsSaved(true);
            } catch (error) {
              console.error("Error saving the data:", error);
@@ -248,6 +251,7 @@ const handleSaveAndClose = async (event) => {
       </Typography>
 
        <Transactions
+             categoryCatalog={categoryCatalog}
              filters={{ filterText, setFilterText,showUncategorized }}
              transactionsData={{ aggregatedData, data, setData, smallTransactions }}
              modalHandlers={{ setSelectedPayee, setOpenDialog }}

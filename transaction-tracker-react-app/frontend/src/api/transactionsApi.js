@@ -26,10 +26,17 @@ const apiFetch = async (url, options = {}) => {
   return response;
 };
 
-export const saveTransactions = async (uploadId, aggregatedData) => {
+export const saveTransactions = async (uploadId, transactions) => {
   const response = await apiFetch("/api/transactions/save", {
     method: "POST",
-    body: JSON.stringify({ uploadId, aggregatedData }, null, 2),
+    body: JSON.stringify({
+      uploadId,
+      transactions: transactions.map(transaction => ({
+        ...transaction,
+        category: transaction.category === "" ? null : transaction.category ?? null,
+        subcategory: transaction.subcategory === "" ? null : transaction.subcategory ?? null,
+      })),
+    }),
   });
   return response.text();
 };

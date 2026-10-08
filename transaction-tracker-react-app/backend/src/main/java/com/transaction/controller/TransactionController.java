@@ -23,7 +23,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.*;
 
-import static com.transaction.util.TransactionUtil.getTransactionsByPayeeSortedByAmount;
 
 
 @RestController
@@ -117,33 +116,16 @@ public class TransactionController {
     }
 
 
+    // TODO : Deduplication and saving in actual batch, class structure should lot simpler.
     @PostMapping("/transactions/save")
     public ResponseEntity<String> saveTransactions(@AuthenticationPrincipal UserPrincipal user,
                                                    @RequestBody SaveTransactionsRequest request) {
 
-        List<AggregatedTransactions> aggregatedTransactions = request.aggregatedData();
 
-        // 1. Save Payee to category, sub-category information.
-        List<PayeeCategoryResponse> payeeCategoryResponses = new ArrayList<>();
-
-        aggregatedTransactions.forEach(aggregatedTransaction -> {
-            PayeeCategoryResponse payeeCategoryResponse =
-                    new PayeeCategoryResponse(aggregatedTransaction.getPayee()
-                            , aggregatedTransaction.getCategory()
-                            , aggregatedTransaction
-                            .getSubcategory(), user.getUserId());
-            payeeCategoryResponses.add(payeeCategoryResponse);
-        });
-
-        payeeCategoryService.savePayeeCategoryMappings(payeeCategoryResponses);
-
-        // 2. Pass the transaction data
-        aggregatedTransactions.forEach(aggregatedTransaction -> {
-            transactionService.saveTransactionsBatch(aggregatedTransaction.getEnhancedTransactionList(),
-                    request.uploadId(), user.getUserId());
-        });
-
+        transactionService.saveTransactions(user.getUserId(),request);
         uploadService.markSuccess(request.uploadId());
+
+        // In case of exception, markFailure
 
         return ResponseEntity.ok("Data Saved Successfully");
     }

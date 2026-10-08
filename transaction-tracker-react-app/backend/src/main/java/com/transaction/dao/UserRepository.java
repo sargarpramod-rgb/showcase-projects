@@ -39,7 +39,7 @@ public class UserRepository {
             // 1️⃣ Insert into users
             PreparedStatement userStmt = conn.prepareStatement(
                     "INSERT INTO users (username) VALUES (?)",
-                    Statement.RETURN_GENERATED_KEYS
+                    new String[]{"user_id"}
             );
             userStmt.setString(1, user.getUsername());
             userStmt.executeUpdate();

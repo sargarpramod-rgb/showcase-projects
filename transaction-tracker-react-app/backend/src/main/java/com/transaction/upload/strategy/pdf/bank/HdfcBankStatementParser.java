@@ -758,7 +758,7 @@ public class HdfcBankStatementParser implements BankStatementParser {
                                 TransactionUtil.setPayeeDetails(txn,row.narrationText);
                                 // txn.setPayee(pendingNarration);
                                 AmountCalc amountCalc = getAmountCalc(row.withdrawalText, row.depositText);
-                                txn.setAmount(amountCalc.amount.doubleValue());
+                                txn.setAmount(amountCalc.amount);
                                 txn.setTxnType(amountCalc.type);
                                 // TODO: wire pendingValueDate ("01/06/26" style string, parse with DATE_FMT)
                                 // into EnhancedTransaction once that model exposes a value-date field/setter.
@@ -803,7 +803,7 @@ public class HdfcBankStatementParser implements BankStatementParser {
 
                 TransactionUtil.setPayeeDetails(txn,pendingNarration);
                 // txn.setPayee(pendingNarration);
-                txn.setAmount(pendingAmount.doubleValue());
+                txn.setAmount(pendingAmount);
                 txn.setTxnType(txnType);
                 // TODO: wire pendingValueDate ("01/06/26" style string, parse with DATE_FMT)
                 // into EnhancedTransaction once that model exposes a value-date field/setter.
